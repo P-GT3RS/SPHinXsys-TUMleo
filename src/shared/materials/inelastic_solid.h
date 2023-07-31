@@ -87,4 +87,33 @@ class HardeningPlasticSolid : public PlasticSolid
 
     virtual HardeningPlasticSolid *ThisObjectPtr() override { return this; };
 };
+/**
+ * @class ViscousPlasticSolid
+ * @brief Class for plastic solid with viscosity
+ */
+class ViscousPlasticSolid : public PlasticSolid
+{
+  protected:
+    Real viscous_modulus_;
+    Real Herschel_Bulkley_power_;
+    const Real sqrt_2_over_3_ = sqrt(2.0 / 3.0);
+    StdLargeVec<Matd> inverse_plastic_strain_; /**< inverse of plastic right cauchy green strain tensor C_p_-1 */
+
+  public:
+    /** Constructor */
+    explicit ViscousPlasticSolid(Real rho0, Real youngs_modulus, Real poisson_ratio, Real yield_stress, Real viscous_modulus, Real herschel_bulkley_power)    
+        : PlasticSolid(rho0, youngs_modulus, poisson_ratio, yield_stress), viscous_modulus_(viscous_modulus), Herschel_Bulkley_power_(herschel_bulkley_power) 
+    {
+        material_type_name_ = "ViscousPlasticSolid";
+    };
+    virtual ~ViscousPlasticSolid(){};
+
+    virtual void initializeLocalParameters(BaseParticles *base_particles) override;
+    Real ViscousModulus() { return viscous_modulus_; };
+    Real HerschelBulkleyPower_() { return Herschel_Bulkley_power_; };
+    /** compute the stress through deformation, and plastic relaxation. */
+    virtual Matd PlasticConstitutiveRelation(const Matd &deformation, size_t index_i, Real dt = 0.0) override;
+
+    virtual ViscousPlasticSolid *ThisObjectPtr() override { return this; };
+};
 } // namespace SPH

@@ -20,7 +20,7 @@ void PlasticIntegration1stHalf::initialization(size_t index_i, Real dt)
     rho_[index_i] = rho0_ / F_[index_i].determinant();
 
     // TODO: this naming is temporary, to be revised.
-    stress_PK1_B_[index_i] = plastic_solid_.PlasticConstitutiveRelation(F_[index_i], index_i, dt);
+    stress_PK1_B_[index_i] = plastic_solid_.PlasticConstitutiveRelation(F_[index_i], index_i, dt) * B_[index_i]; // add * B_[index_i]; according to .cpp from Xiaojing
 }
 //=================================================================================================//
 } // namespace solid_dynamics
