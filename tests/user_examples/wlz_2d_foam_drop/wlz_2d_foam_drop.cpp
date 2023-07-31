@@ -21,7 +21,6 @@ Real Shear_modulus = 290;           /* ¦Ì/G shear modulus. Pa */
 Real yield_stress = 31.9;           /* ¦Ò_Y yield stress. Pa */
 Real viscous_modulus = 27.2;        /* ¦Ç viscosity. */
 Real Herschel_Bulkley_power = 0.22; /* h Herschel_Bulkley_power. */
-// Real shear_coefficient = 1;      /* ¦Á_s shear coefficient. */
 //  2D formula
 // Real Youngs_modulus = (4.0 * Shear_modulus * Bulk_modulus) / (Bulk_modulus + Shear_modulus);
 // Real poisson = (Bulk_modulus - Shear_modulus) / (Bulk_modulus + Shear_modulus);
