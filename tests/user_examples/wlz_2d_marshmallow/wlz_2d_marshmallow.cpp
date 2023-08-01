@@ -5,12 +5,11 @@ using namespace SPH;   // Namespace cite here.
 //------------------------------------------------------------------------------
 Real PL = 3.05;                 // cracker length
 Real PH = 2.05;                 // height between crackers
-Real initial_distance = 0.0;
 Real resolution_ref = 0.02;
 Real BW = resolution_ref * 4.0; // cracker width
 Real marshmallow_radius = 1.1;
 Vec2d marshmallow_center(0.0, 0.0);
-BoundingBox system_domain_bounds(Vec2d(-PL, -PH), Vec2d(PL, PH));
+BoundingBox system_domain_bounds(Vec2d(-PL - BW, -PH - BW), Vec2d(PL + BW, PH + BW));
 Real time_to_apply_velocity = 0.45;
 Real cracker_velocity = 0.2;
 //----------------------------------------------------------------------
@@ -102,6 +101,7 @@ class Marshmallow : public MultiPolygonShape
     explicit Marshmallow(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
         // 第三项resolution决定圆周的圆滑程度,数字代表由正n边形拟合,数字越大越圆滑.
+        // 修改圆形使其两侧接触为线接触.
         multi_polygon_.addACircle(marshmallow_center, marshmallow_radius, 200, ShapeBooleanOps::add);
         multi_polygon_.addAPolygon(createUpperMarshmallowShape(), ShapeBooleanOps::sub);
         multi_polygon_.addAPolygon(createLowerMarshmallowShape(), ShapeBooleanOps::sub);
