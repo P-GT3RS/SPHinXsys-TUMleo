@@ -51,6 +51,11 @@ void ViscousPlasticSolid::initializeLocalParameters(BaseParticles *base_particle
 //=================================================================================================//
 Matd ViscousPlasticSolid::PlasticConstitutiveRelation(const Matd &F, size_t index_i, Real dt)
 {
+    //--------------------------------------------------------------------------
+    // the following is from Xiaojing.cpp
+    // Matd normalized_F = F * pow(SimTK::det(F), -one_over_dimensions_);
+    // Matd normalized_be = normalized_F * inverse_plastic_strain_[index_i] * ~normalized_F;
+    //--------------------------------------------------------------------------
     // b_e = F * C_p_-1 * F_T
     Matd be = F * inverse_plastic_strain_[index_i] * F.transpose();
     // b_e_- = b_e * det(b_e)^(1/3)
