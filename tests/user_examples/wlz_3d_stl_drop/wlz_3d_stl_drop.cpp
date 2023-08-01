@@ -1,7 +1,5 @@
 /**
- * @file 	3d_self_contact.cpp
- * @brief 	This is the test to check self contact for solid dynamics
- * @author 	Xiangyu Hu
+ * this file is following the 3d_self_contact.cpp
  */
 
 #include "sphinxsys.h"
@@ -77,7 +75,8 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     SolidBody xiaohuangren(system, makeShared<Xiaohuangren>("Xiaohuangren"));
     xiaohuangren.defineBodyLevelSetShape()->writeLevelSet(io_environment);
-    xiaohuangren.defineParticlesAndMaterial<ElasticSolidParticles, NeoHookeanSolid>(rho0_s, Youngs_modulus, poisson);
+    xiaohuangren.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
+                                                                                        yield_stress, viscous_modulus, Herschel_Bulkley_power);
     (!system.RunParticleRelaxation() && system.ReloadParticles())
         ? xiaohuangren.generateParticles<ParticleGeneratorReload>(io_environment, xiaohuangren.getName())
         : xiaohuangren.generateParticles<ParticleGeneratorLattice>();
@@ -144,9 +143,9 @@ int main(int ac, char *av[])
     // Corrected configuration for reproducing rigid rotation.
     InteractionWithUpdate<CorrectedConfigurationInner> corrected_configuration(xiaohuangren_inner);
     // Time step size
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> computing_time_step_size(xiaohuangren, 0.5);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> computing_time_step_size(xiaohuangren, 0.1);
     // stress relaxation.
-    Dynamics1Level<solid_dynamics::Integration1stHalfPK2> stress_relaxation_first_half(xiaohuangren_inner);
+    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> stress_relaxation_first_half(xiaohuangren_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> stress_relaxation_second_half(xiaohuangren_inner);
     // Algorithms for solid-solid contacts.
     InteractionDynamics<solid_dynamics::ContactDensitySummation> xiaohuangren_update_contact_density(xiaohuangren_contact);
