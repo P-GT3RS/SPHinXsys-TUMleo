@@ -4,11 +4,11 @@ using namespace SPH;   // Namespace cite here.
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
 Real DL = 6.0;                /**< box length. */
-Real DH = 3.0;                /**< box height. */
-Real resolution_ref = 0.025;  /**< reference resolution. */
+Real DH = 2.0;                /**< box height. */
+Real resolution_ref = 0.02;  /**< reference resolution. */
 Real BW = resolution_ref * 4; /**< wall width for BCs. */
 BoundingBox system_domain_bounds(Vec2d(-BW, -BW), Vec2d(DL + BW, DH + BW));
-Vec2d ball_center(3.0, 2.0);
+Vec2d ball_center(3.0, 1.5);
 Real ball_radius = 0.5;
 StdVec<Vecd> observation_location = {ball_center};
 //----------------------------------------------------------------------
@@ -24,7 +24,7 @@ Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus 
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);
 Real yield_stress = 0.1;
 Real viscous_modulus = 10.0;
-Real Herschel_Bulkley_power = 2.5; // oobleck 2.8
+Real Herschel_Bulkley_power = 1.0; // oobleck 2.8
     //----------------------------------------------------------------------
 //	Geometric shapes
 //----------------------------------------------------------------------
