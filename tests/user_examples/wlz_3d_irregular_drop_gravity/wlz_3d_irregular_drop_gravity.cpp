@@ -14,7 +14,7 @@ Real column_length = 2.0;
 //----------------------------------------------------------------------
 //	Global parameters on material properties
 //----------------------------------------------------------------------
-// viscoplastic
+// viscoplastic material
 Real gravity_g = 2.0;                                                                                   /* 过大会导致球体直接穿过地面,过小会导致球体刚接触地面就停止计算 */
 Real rho0_s = 1.0e3;                                                                                    /* ρ density. kg/m^3 */
 Real Bulk_modulus = 1.09e5;                                                                             /* κ bulk modulus. Pa */
