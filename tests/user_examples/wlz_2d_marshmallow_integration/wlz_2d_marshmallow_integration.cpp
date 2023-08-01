@@ -3,25 +3,25 @@ using namespace SPH;   // Namespace cite here.
 //------------------------------------------------------------------------------
 // global parameters for the case
 //------------------------------------------------------------------------------
-Real PL = 3.0; // cracker length
-Real PH = 2.05; // height between crackers
-Real resolution_ref = 0.02;
-Real BW = resolution_ref * 8.0; // cracker width
+Real PL = 3.0;                   // cracker length
+Real PH = 2.05;                   // height between crackers
+Real resolution_ref = 0.01;
+Real BW = resolution_ref * 8.0;  // cracker width
 Real marshmallow_radius = 1.0;
 Vec2d marshmallow_center(0.0, 0.0);
-BoundingBox system_domain_bounds(Vec2d(-PL, -PH), Vec2d(PL, PH));
-Real time_to_apply_velocity = 0.45;
+BoundingBox system_domain_bounds(Vec2d(-PL - BW, -PH - BW), Vec2d(PL + BW, PH + BW));
+Real time_to_apply_velocity = 0.5;
 //----------------------------------------------------------------------
 //	Global parameters for material properties.
 //----------------------------------------------------------------------
-Real physical_viscosity = 100.0;
+Real physical_viscosity = 200.0;
 // s'more interior (s'more exterior)
 Real rho0_s = 50.0;
 Real Bulk_modulus = 1.09e5;
-Real Shear_modulus = 80.0;          // 5.0e4
-Real yield_stress = 10.0;           // 1000.0
-Real viscous_modulus = 16.0;        // 0.1
-Real Herschel_Bulkley_power = 0.43; // 1.0
+Real Shear_modulus = 80.0;          // 80.0(5.0e4)
+Real yield_stress = 10.0;           // 10.0(1000.0)
+Real viscous_modulus = 16.0;        // 16.0(0.1)
+Real Herschel_Bulkley_power = 0.43; // 0.43(1.0)
 // 2D formula
 // Real poisson = (Bulk_modulus - Shear_modulus) / (Bulk_modulus + Shear_modulus);
 // Real Youngs_modulus = (4.0 * Shear_modulus * Bulk_modulus) / (Bulk_modulus + Shear_modulus);
@@ -103,8 +103,8 @@ int main(int ac, char *av[])
     //	Build up -- a SPHSystem
     //----------------------------------------------------------------------
     SPHSystem sph_system(system_domain_bounds, resolution_ref);
-    sph_system.setRunParticleRelaxation(false); // false
-    sph_system.setReloadParticles(true);
+    sph_system.setRunParticleRelaxation(false); // true
+    sph_system.setReloadParticles(true);        // false
     sph_system.handleCommandlineOptions(ac, av);
     IOEnvironment io_environment(sph_system);
     //----------------------------------------------------------------------
@@ -175,17 +175,18 @@ int main(int ac, char *av[])
     // time step size calculation
     ReduceDynamics<solid_dynamics::AcousticTimeStepSize> marshmallow_computing_time_step_size(marshmallow);
     // stress relaxation for the strip
-    Dynamics1Level<solid_dynamics::Integration1stHalfKirchhoff> marshmallow_stress_relaxation_first_half(marshmallow_inner);
+    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> marshmallow_stress_relaxation_first_half(marshmallow_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> marshmallow_stress_relaxation_second_half(marshmallow_inner);
-    SimpleDynamics<solid_dynamics::ConstrainSolidBodyMassCenter> constrain_mass_center(marshmallow, Vecd(1.0, 1.0));
     /** Algorithms for solid-solid contact. */
     InteractionDynamics<solid_dynamics::SelfContactDensitySummation> marshmallow_self_contact_density(marshmallow_self_contact);
     InteractionDynamics<solid_dynamics::SelfContactForce> marshmallow_self_contact_forces(marshmallow_self_contact);
 
     BodyRegionByParticle upper_cracker_part(marshmallow, makeShared<MultiPolygonShape>(createUpperCracker()));
-    SimpleDynamics<solid_dynamics::TranslateSolidBodyPart> upper_cracker(upper_cracker_part, 0.0, time_to_apply_velocity, Vecd(0.0, -0.3 * PH));
+    SimpleDynamics<solid_dynamics::TranslateSolidBodyPart> upper_cracker(upper_cracker_part, 0.0, time_to_apply_velocity, Vecd(0.0, -0.2 * PH));
+    SimpleDynamics<solid_dynamics::FixBodyPartConstraint> constraint_upper_cracker(upper_cracker_part);
     BodyRegionByParticle lower_cracker_part(marshmallow, makeShared<MultiPolygonShape>(createLowerCracker()));
-    SimpleDynamics<solid_dynamics::TranslateSolidBodyPart> lower_cracker(lower_cracker_part, 0.0, time_to_apply_velocity, Vecd(0.0, 0.3 * PH));
+    SimpleDynamics<solid_dynamics::TranslateSolidBodyPart> lower_cracker(lower_cracker_part, 0.0, time_to_apply_velocity, Vecd(0.0, 0.2 * PH));
+    SimpleDynamics<solid_dynamics::FixBodyPartConstraint> constraint_lower_cracker(lower_cracker_part);
 
     DampingWithRandomChoice<InteractionSplit<DampingBySplittingInner<Vecd>>>
         marshmallow_position_damping(0.5, marshmallow_inner, "Velocity", physical_viscosity);
@@ -234,12 +235,12 @@ int main(int ac, char *av[])
                 marshmallow_self_contact_forces.exec();
 
                 upper_cracker.exec(dt);
+                constraint_upper_cracker.exec(dt);
                 lower_cracker.exec(dt);
+                constraint_lower_cracker.exec(dt);
 
                 marshmallow_stress_relaxation_first_half.exec(dt);
-                constrain_mass_center.exec(dt);
                 marshmallow_position_damping.exec(dt);
-                //constrain_mass_center.exec(dt);
                 marshmallow_stress_relaxation_second_half.exec(dt);
 
                 marshmallow.updateCellLinkedList();
@@ -258,7 +259,6 @@ int main(int ac, char *av[])
         interval += t3 - t2;
     }
     TickCount t4 = TickCount::now();
-
     TimeInterval tt;
     tt = t4 - t1 - interval;
     std::cout << "Total wall time for computation: " << tt.seconds() << " seconds." << std::endl;
