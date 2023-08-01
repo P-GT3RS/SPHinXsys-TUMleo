@@ -108,6 +108,7 @@ class ViscousPlasticSolid : public PlasticSolid
     };
     virtual ~ViscousPlasticSolid(){};
 
+    // assign particles to this material
     virtual void initializeLocalParameters(BaseParticles *base_particles) override;
     Real ViscousModulus() { return viscous_modulus_; };
     Real HerschelBulkleyPower_() { return Herschel_Bulkley_power_; };
