@@ -1,22 +1,25 @@
+/**
+ * @file 	collision_viscoplastic.cpp
+ * @brief 	one ball with viscoplastic or oobleck material bouncing with a boundary
+ * @details
+ * @author 	Liezhao Wu, Chi Zhang and Xiangyu Hu
+ */
 #include "sphinxsys.h" //SPHinXsys Library.
 using namespace SPH;   // Namespace cite here.
 //----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real DL = 6.0;                /**< box length. */
-Real DH = 2.0;                /**< box height. */
-Real resolution_ref = 0.02;  /**< reference resolution. */
-Real BW = resolution_ref * 4; /**< wall width for BCs. */
+Real DL = 0.6;                          /**< box length. */
+Real DH = 0.6;                          /**< box height. */
+Real resolution_ref = 0.002;            /**< reference resolution. */
+Real BW = resolution_ref * 4;           /**< wall width for BCs. */
 BoundingBox system_domain_bounds(Vec2d(-BW, -BW), Vec2d(DL + BW, DH + BW));
-Vec2d ball_center(3.0, 1.5);
-Real ball_radius = 0.5;
-StdVec<Vecd> observation_location = {ball_center};
+Vec2d ball_center(0.5 * DL, 0.5 * DH);
+Real ball_radius = resolution_ref * 25; /**< radius of ball. 30 particles */
 //----------------------------------------------------------------------
 //	Global parameters on material properties
 //----------------------------------------------------------------------
 Real gravity_g = 1.0;
-Real physical_viscosity = 10000.0;
-// viscoplastic material
 Real rho0_s = 1.0e3;
 Real Bulk_modulus = 1.09e5;
 Real Shear_modulus = 1.12e4;
@@ -24,8 +27,8 @@ Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus 
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);
 Real yield_stress = 0.1;
 Real viscous_modulus = 10.0;
-Real Herschel_Bulkley_power = 1.0; // oobleck 2.8
-    //----------------------------------------------------------------------
+Real Herschel_Bulkley_power = 2.8; // oobleck with 2.8 or viscoplastic with 1.0
+//----------------------------------------------------------------------
 //	Geometric shapes
 //----------------------------------------------------------------------
 class WallBoundary : public MultiPolygonShape
@@ -34,11 +37,11 @@ class WallBoundary : public MultiPolygonShape
     explicit WallBoundary(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
         std::vector<Vecd> wall_boundary_shape;
-        wall_boundary_shape.push_back(Vecd(-BW, -BW));
-        wall_boundary_shape.push_back(Vecd(-BW, 0.0));
+        wall_boundary_shape.push_back(Vecd(0.0, -BW));
+        wall_boundary_shape.push_back(Vecd(0.0, 0.0));
         wall_boundary_shape.push_back(Vecd(DL, 0.0));
         wall_boundary_shape.push_back(Vecd(DL, -BW));
-        wall_boundary_shape.push_back(Vecd(-BW, -BW));
+        wall_boundary_shape.push_back(Vecd(0.0, -BW));
         multi_polygon_.addAPolygon(wall_boundary_shape, ShapeBooleanOps::add);
     }
 };
@@ -77,11 +80,8 @@ int main(int ac, char *av[])
         : ball.generateParticles<ParticleGeneratorLattice>();
 
     SolidBody wall_boundary(sph_system, makeShared<WallBoundary>("WallBoundary"));
-    wall_boundary.defineParticlesAndMaterial<SolidParticles, NeoHookeanSolid>(rho0_s, Youngs_modulus, poisson);
+    wall_boundary.defineParticlesAndMaterial<SolidParticles, Solid>(rho0_s, Youngs_modulus, poisson);
     wall_boundary.generateParticles<ParticleGeneratorLattice>();
-
-    ObserverBody ball_observer(sph_system, "BallObserver");
-    ball_observer.generateParticles<ObserverParticleGenerator>(observation_location);
     //----------------------------------------------------------------------
     //	Run particle relaxation for body-fitted distribution if chosen.
     //----------------------------------------------------------------------
@@ -132,7 +132,6 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     InnerRelation ball_inner(ball);
     SurfaceContactRelation ball_contact(ball, {&wall_boundary});
-    ContactRelation ball_observer_contact(ball_observer, {&ball});
     //----------------------------------------------------------------------
     //	Define the main numerical methods used in the simulation.
     //	Note that there may be data dependence on the constructors of these methods.
@@ -140,7 +139,7 @@ int main(int ac, char *av[])
     SharedPtr<Gravity> gravity_ptr = makeShared<Gravity>(Vecd(0.0, -gravity_g));
     SimpleDynamics<TimeStepInitialization> ball_initialize_timestep(ball, gravity_ptr);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_corrected_configuration(ball_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_get_time_step_size(ball,0.1);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_get_time_step_size(ball, 0.1);
     /** stress relaxation for the balls. */
     Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_stress_relaxation_first_half(ball_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_stress_relaxation_second_half(ball_inner);
@@ -151,8 +150,6 @@ int main(int ac, char *av[])
     //	Define the methods for I/O operations and observations of the simulation.
     //----------------------------------------------------------------------
     BodyStatesRecordingToVtp body_states_recording(io_environment, sph_system.real_bodies_);
-    RegressionTestDynamicTimeWarping<ObservedQuantityRecording<Vecd>>
-        ball_displacement_recording("Position", io_environment, ball_observer_contact);
     //----------------------------------------------------------------------
     //	Prepare the simulation with cell linked list, configuration
     //	and case specified initial condition if necessary.
@@ -164,12 +161,11 @@ int main(int ac, char *av[])
     //	Initial states output.
     //----------------------------------------------------------------------
     body_states_recording.writeToFile(0);
-    ball_displacement_recording.writeToFile(0);
     //----------------------------------------------------------------------
     //	Setup for time-stepping control
     //----------------------------------------------------------------------
     int ite = 0;
-    Real T0 = 5.0;
+    Real T0 = 3.0;
     Real end_time = T0;
     Real output_interval = 0.01 * T0;
     Real Dt = 0.1 * output_interval;
@@ -209,8 +205,6 @@ int main(int ac, char *av[])
                 relaxation_time += dt;
                 integration_time += dt;
                 GlobalStaticVariables::physical_time_ += dt;
-
-                ball_displacement_recording.writeToFile(ite);
             }
         }
         TickCount t2 = TickCount::now();
@@ -223,8 +217,6 @@ int main(int ac, char *av[])
     TimeInterval tt;
     tt = t4 - t1 - interval;
     std::cout << "Total wall time for computation: " << tt.seconds() << " seconds." << std::endl;
-
-    ball_displacement_recording.testResult();
 
     return 0;
 }
