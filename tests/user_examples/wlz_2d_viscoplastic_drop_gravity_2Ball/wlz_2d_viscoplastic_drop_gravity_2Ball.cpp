@@ -1,33 +1,36 @@
+/**
+ * @file 	collision_viscoplastic.cpp
+ * @brief 	two balls with viscoplastic and oobleck material bouncing with a boundary
+ * @details 
+ * @author 	Liezhao Wu, Chi Zhang and Xiangyu Hu
+ */
 #include "sphinxsys.h" // SPHinXsys Library.
 using namespace SPH;   // Namespace cite here.
 //----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real DL = 8.0;                /**< box length. */
-Real DH = 4.0;                /**< box height. */
-Real resolution_ref = 0.025;  /**< reference resolution. */
+Real DL = 0.8;                /**< box length. */
+Real DH = 0.6;                /**< box height. */
+Real resolution_ref = 0.002;  /**< reference resolution. */
+Real ball_radius = resolution_ref * 25;
+Vec2d ball_1_center(0.3 * DL, 0.5 * DH);
+Vec2d ball_2_center(0.7 * DL, 0.5 * DH);
 Real BW = resolution_ref * 4; /**< wall width for BCs. */
+/** Domain bounds of the system. */
 BoundingBox system_domain_bounds(Vec2d(-BW, -BW), Vec2d(DL + BW, DH + BW));
-Vec2d ball_center_1(2.0, 2.0);
-Vec2d ball_center_2(6.0, 2.0);
-Real ball_radius = 0.5;
-// observer location
-StdVec<Vecd> observation_location_1 = {ball_center_1};
-StdVec<Vecd> observation_location_2 = {ball_center_2};
 //----------------------------------------------------------------------
 //	Global parameters on material properties
 //----------------------------------------------------------------------
 Real gravity_g = 1.0;
-Real physical_viscosity = 10000.0;
 Real rho0_s = 1.0e3;
 Real Bulk_modulus = 1.09e5;
 Real Shear_modulus = 1.12e4;
 Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus);
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);
 Real yield_stress = 0.1;
-Real viscous_modulus = 10.0;
-Real Herschel_Bulkley_power_1 = 1.0; // oobleck 2.8
-Real Herschel_Bulkley_power_2 = 2.5; // oobleck 2.8
+Real viscous_modulus = 10.0;  
+Real Herschel_Bulkley_power_1 = 1.0; /** viscoplastic material. */
+Real Herschel_Bulkley_power_2 = 2.8; /** shear thickening material. */
 //----------------------------------------------------------------------
 //	Geometric shapes
 //----------------------------------------------------------------------
@@ -36,38 +39,29 @@ class WallBoundary : public MultiPolygonShape
   public:
     explicit WallBoundary(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
-        std::vector<Vecd> outer_wall_shape;
-        outer_wall_shape.push_back(Vecd(-BW, -BW));
-        outer_wall_shape.push_back(Vecd(-BW, DH + BW));
-        outer_wall_shape.push_back(Vecd(DL + BW, DH + BW));
-        outer_wall_shape.push_back(Vecd(DL + BW, -BW));
-        outer_wall_shape.push_back(Vecd(-BW, -BW));
-
-        std::vector<Vecd> inner_wall_shape;
-        inner_wall_shape.push_back(Vecd(0.0, 0.0));
-        inner_wall_shape.push_back(Vecd(0.0, DH));
-        inner_wall_shape.push_back(Vecd(DL, DH));
-        inner_wall_shape.push_back(Vecd(DL, 0.0));
-        inner_wall_shape.push_back(Vecd(0.0, 0.0));
-
-        multi_polygon_.addAPolygon(outer_wall_shape, ShapeBooleanOps::add);
-        multi_polygon_.addAPolygon(inner_wall_shape, ShapeBooleanOps::sub);
+        std::vector<Vecd> wall_boundary_shape;
+        wall_boundary_shape.push_back(Vecd(0.0, -BW));
+        wall_boundary_shape.push_back(Vecd(0.0, 0.0));
+        wall_boundary_shape.push_back(Vecd(DL, 0.0));
+        wall_boundary_shape.push_back(Vecd(DL, -BW));
+        wall_boundary_shape.push_back(Vecd(0.0, -BW));
+        multi_polygon_.addAPolygon(wall_boundary_shape, ShapeBooleanOps::add);
     }
 };
-class FreeBall : public MultiPolygonShape
+class BallOne : public MultiPolygonShape
 {
   public:
-    explicit FreeBall(const std::string &shape_name) : MultiPolygonShape(shape_name)
+    explicit BallOne(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
-        multi_polygon_.addACircle(ball_center_1, ball_radius, 100, ShapeBooleanOps::add);
+        multi_polygon_.addACircle(ball_1_center, ball_radius, 100, ShapeBooleanOps::add);
     }
 };
-class DampingBall : public MultiPolygonShape
+class BallTwo : public MultiPolygonShape
 {
   public:
-    explicit DampingBall(const std::string &shape_name) : MultiPolygonShape(shape_name)
+    explicit BallTwo(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
-        multi_polygon_.addACircle(ball_center_2, ball_radius, 100, ShapeBooleanOps::add);
+        multi_polygon_.addACircle(ball_2_center, ball_radius, 100, ShapeBooleanOps::add);
     }
 };
 //----------------------------------------------------------------------
@@ -80,7 +74,7 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     SPHSystem sph_system(system_domain_bounds, resolution_ref);
     /** Tag for running particle relaxation for the initially body-fitted distribution */
-    sph_system.setRunParticleRelaxation(false); //false
+    sph_system.setRunParticleRelaxation(false); // false
     /** Tag for starting with relaxed body-fitted particles distribution */
     sph_system.setReloadParticles(true);
     sph_system.handleCommandlineOptions(ac, av);
@@ -88,30 +82,25 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     //	Creating body, materials and particles.
     //----------------------------------------------------------------------
-    SolidBody free_ball(sph_system, makeShared<FreeBall>("FreeBall"));
-    free_ball.defineBodyLevelSetShape();
-    free_ball.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
+    SolidBody ball_1(sph_system, makeShared<BallOne>("BallOne"));
+    ball_1.defineBodyLevelSetShape();
+    ball_1.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
     yield_stress, viscous_modulus, Herschel_Bulkley_power_1);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
-        ? free_ball.generateParticles<ParticleGeneratorReload>(io_environment, free_ball.getName())
-        : free_ball.generateParticles<ParticleGeneratorLattice>();
+        ? ball_1.generateParticles<ParticleGeneratorReload>(io_environment, ball_1.getName())
+        : ball_1.generateParticles<ParticleGeneratorLattice>();
 
-    SolidBody damping_ball(sph_system, makeShared<DampingBall>("DampingBall"));
-    damping_ball.defineBodyLevelSetShape();
-    damping_ball.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
+    SolidBody ball_2(sph_system, makeShared<BallTwo>("BallTwo"));
+    ball_2.defineBodyLevelSetShape();
+    ball_2.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
     yield_stress, viscous_modulus, Herschel_Bulkley_power_2);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
-        ? damping_ball.generateParticles<ParticleGeneratorReload>(io_environment, damping_ball.getName())
-        : damping_ball.generateParticles<ParticleGeneratorLattice>();
+        ? ball_2.generateParticles<ParticleGeneratorReload>(io_environment, ball_2.getName())
+        : ball_2.generateParticles<ParticleGeneratorLattice>();
 
     SolidBody wall_boundary(sph_system, makeShared<WallBoundary>("WallBoundary"));
-    wall_boundary.defineParticlesAndMaterial<SolidParticles, NeoHookeanSolid>(rho0_s, Youngs_modulus, poisson);
+    wall_boundary.defineParticlesAndMaterial<SolidParticles, Solid>(rho0_s, Youngs_modulus, poisson);
     wall_boundary.generateParticles<ParticleGeneratorLattice>();
-
-    ObserverBody free_ball_observer(sph_system, "FreeBallObserver");
-    free_ball_observer.generateParticles<ObserverParticleGenerator>(observation_location_1);
-    ObserverBody damping_ball_observer(sph_system, "DampingBallObserver");
-    damping_ball_observer.generateParticles<ObserverParticleGenerator>(observation_location_2);
     //----------------------------------------------------------------------
     //	Run particle relaxation for body-fitted distribution if chosen.
     //----------------------------------------------------------------------
@@ -120,25 +109,25 @@ int main(int ac, char *av[])
         //----------------------------------------------------------------------
         //	Define body relation map used for particle relaxation.
         //----------------------------------------------------------------------
-        InnerRelation free_ball_inner(free_ball);
-        InnerRelation damping_ball_inner(damping_ball);
+        InnerRelation ball_1_inner(ball_1);
+        InnerRelation ball_2_inner(ball_2);
         //----------------------------------------------------------------------
         //	Define the methods for particle relaxation.
         //----------------------------------------------------------------------
-        SimpleDynamics<RandomizeParticlePosition> free_ball_random_particles(free_ball);
-        SimpleDynamics<RandomizeParticlePosition> damping_ball_random_particles(damping_ball);
-        relax_dynamics::RelaxationStepInner free_ball_relaxation_step_inner(free_ball_inner);
-        relax_dynamics::RelaxationStepInner damping_ball_relaxation_step_inner(damping_ball_inner);
+        SimpleDynamics<RandomizeParticlePosition> ball_1_random_particles(ball_1);
+        SimpleDynamics<RandomizeParticlePosition> ball_2_random_particles(ball_2);
+        relax_dynamics::RelaxationStepInner ball_1_relaxation_step_inner(ball_1_inner);
+        relax_dynamics::RelaxationStepInner ball_2_relaxation_step_inner(ball_2_inner);
         //----------------------------------------------------------------------
         //	Output for particle relaxation.
         //----------------------------------------------------------------------
         BodyStatesRecordingToVtp write_ball_state(io_environment, sph_system.real_bodies_);
-        ReloadParticleIO write_particle_reload_files(io_environment, {&free_ball, &damping_ball});
+        ReloadParticleIO write_particle_reload_files(io_environment, {&ball_1, &ball_2});
         //----------------------------------------------------------------------
         //	Particle relaxation starts here.
         //----------------------------------------------------------------------
-        free_ball_random_particles.exec(0.25);
-        damping_ball_random_particles.exec(0.25);
+        ball_1_random_particles.exec(0.25);
+        ball_2_random_particles.exec(0.25);
         write_ball_state.writeToFile(0);
         //----------------------------------------------------------------------
         //	From here iteration for particle relaxation begins.
@@ -147,8 +136,8 @@ int main(int ac, char *av[])
         int relax_step = 1000;
         while (ite < relax_step)
         {
-            free_ball_relaxation_step_inner.exec();
-            damping_ball_relaxation_step_inner.exec();
+            ball_1_relaxation_step_inner.exec();
+            ball_2_relaxation_step_inner.exec();
             ite += 1;
             if (ite % 100 == 0)
             {
@@ -165,63 +154,52 @@ int main(int ac, char *av[])
     //	The contact map gives the topological connections between the bodies.
     //	Basically the the range of bodies to build neighbor particle lists.
     //----------------------------------------------------------------------
-    InnerRelation free_ball_inner(free_ball);
-    SurfaceContactRelation free_ball_contact(free_ball, {&wall_boundary});
-    InnerRelation damping_ball_inner(damping_ball);
-    SurfaceContactRelation damping_ball_contact(damping_ball, {&wall_boundary});
-    ContactRelation free_ball_observer_contact(free_ball_observer, {&free_ball});
-    ContactRelation damping_all_observer_contact(damping_ball_observer, {&damping_ball});
+    InnerRelation ball_1_inner(ball_1);
+    SurfaceContactRelation ball_1_contact(ball_1, {&wall_boundary});
+    InnerRelation ball_2_inner(ball_2);
+    SurfaceContactRelation ball_2_contact(ball_2, {&wall_boundary});
     //----------------------------------------------------------------------
     //	Define the main numerical methods used in the simulation.
     //	Note that there may be data dependence on the constructors of these methods.
     //----------------------------------------------------------------------
     SharedPtr<Gravity> gravity_ptr = makeShared<Gravity>(Vecd(0.0, -gravity_g));
-    SimpleDynamics<TimeStepInitialization> free_ball_initialize_timestep(free_ball, gravity_ptr);
-    SimpleDynamics<TimeStepInitialization> damping_ball_initialize_timestep(damping_ball, gravity_ptr);
-    InteractionWithUpdate<CorrectedConfigurationInner> free_ball_corrected_configuration(free_ball_inner);
-    InteractionWithUpdate<CorrectedConfigurationInner> damping_ball_corrected_configuration(damping_ball_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> free_ball_get_time_step_size(free_ball);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> damping_ball_get_time_step_size(damping_ball);
+    SimpleDynamics<TimeStepInitialization> ball_1_initialize_timestep(ball_1, gravity_ptr);
+    SimpleDynamics<TimeStepInitialization> ball_2_initialize_timestep(ball_2, gravity_ptr);
+    InteractionWithUpdate<CorrectedConfigurationInner> ball_1_corrected_configuration(ball_1_inner);
+    InteractionWithUpdate<CorrectedConfigurationInner> ball_2_corrected_configuration(ball_2_inner);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.05);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 0.05);
     /** stress relaxation for the balls. */
-    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> free_ball_stress_relaxation_first_half(free_ball_inner);
-    Dynamics1Level<solid_dynamics::Integration2ndHalf> free_ball_stress_relaxation_second_half(free_ball_inner);
-    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> damping_ball_stress_relaxation_first_half(damping_ball_inner);
-    Dynamics1Level<solid_dynamics::Integration2ndHalf> damping_ball_stress_relaxation_second_half(damping_ball_inner);
+    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_1_stress_relaxation_first_half(ball_1_inner);
+    Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_1_stress_relaxation_second_half(ball_1_inner);
+    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_2_stress_relaxation_first_half(ball_2_inner);
+    Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_2_stress_relaxation_second_half(ball_2_inner);
     /** Algorithms for solid-solid contact. */
-    InteractionDynamics<solid_dynamics::ContactDensitySummation> free_ball_update_contact_density(free_ball_contact);
-    InteractionDynamics<solid_dynamics::ContactForceFromWall> free_ball_compute_solid_contact_forces(free_ball_contact);
-    InteractionDynamics<solid_dynamics::ContactDensitySummation> damping_ball_update_contact_density(damping_ball_contact);
-    InteractionDynamics<solid_dynamics::ContactForceFromWall> damping_ball_compute_solid_contact_forces(damping_ball_contact);
-    /** Damping for one ball */
-    DampingWithRandomChoice<InteractionSplit<DampingPairwiseInner<Vec2d>>>
-        damping(0.5, damping_ball_inner, "Velocity", physical_viscosity);
+    InteractionDynamics<solid_dynamics::ContactDensitySummation> ball_1_update_contact_density(ball_1_contact);
+    InteractionDynamics<solid_dynamics::ContactForceFromWall> ball_1_compute_solid_contact_forces(ball_1_contact);
+    InteractionDynamics<solid_dynamics::ContactDensitySummation> ball_2_update_contact_density(ball_2_contact);
+    InteractionDynamics<solid_dynamics::ContactForceFromWall> ball_2_compute_solid_contact_forces(ball_2_contact);
     //----------------------------------------------------------------------
     //	Define the methods for I/O operations and observations of the simulation.
     //----------------------------------------------------------------------
     BodyStatesRecordingToVtp body_states_recording(io_environment, sph_system.real_bodies_);
-    RegressionTestDynamicTimeWarping<ObservedQuantityRecording<Vecd>>
-        free_ball_displacement_recording("Position", io_environment, free_ball_observer_contact);
-    RegressionTestDynamicTimeWarping<ObservedQuantityRecording<Vecd>>
-        damping_ball_displacement_recording("Position", io_environment, damping_all_observer_contact);
     //----------------------------------------------------------------------
     //	Prepare the simulation with cell linked list, configuration
     //	and case specified initial condition if necessary.
     //----------------------------------------------------------------------
     sph_system.initializeSystemCellLinkedLists();
     sph_system.initializeSystemConfigurations();
-    free_ball_corrected_configuration.exec();
-    damping_ball_corrected_configuration.exec();
+    ball_1_corrected_configuration.exec();
+    ball_2_corrected_configuration.exec();
     //----------------------------------------------------------------------
     //	Initial states output.
     //----------------------------------------------------------------------
     body_states_recording.writeToFile(0);
-    free_ball_displacement_recording.writeToFile(0);
-    damping_ball_displacement_recording.writeToFile(0);
     //----------------------------------------------------------------------
     //	Setup for time-stepping control
     //----------------------------------------------------------------------
     int ite = 0;
-    Real T0 = 10.0;
+    Real T0 = 5.0; 
     Real end_time = T0;
     Real output_interval = 0.01 * T0;
     Real Dt = 0.1 * output_interval;
@@ -242,40 +220,36 @@ int main(int ac, char *av[])
             Real relaxation_time = 0.0;
             while (relaxation_time < Dt)
             {
-                free_ball_initialize_timestep.exec();
-                damping_ball_initialize_timestep.exec();
+                ball_1_initialize_timestep.exec();
+                ball_2_initialize_timestep.exec();
                 if (ite % 100 == 0)
                 {
                     std::cout << "N=" << ite << " Time: "
                               << GlobalStaticVariables::physical_time_ << "	dt: " << dt << "\n";
                 }
-                free_ball_update_contact_density.exec();
-                free_ball_compute_solid_contact_forces.exec();
-                free_ball_stress_relaxation_first_half.exec(dt);
-                free_ball_stress_relaxation_second_half.exec(dt);
+                ball_1_update_contact_density.exec();
+                ball_1_compute_solid_contact_forces.exec();
+                ball_1_stress_relaxation_first_half.exec(dt);
+                ball_1_stress_relaxation_second_half.exec(dt);
 
-                free_ball.updateCellLinkedList();
-                free_ball_contact.updateConfiguration();
+                ball_1.updateCellLinkedList();
+                ball_1_contact.updateConfiguration();
 
-                damping_ball_update_contact_density.exec();
-                damping_ball_compute_solid_contact_forces.exec();
-                damping_ball_stress_relaxation_first_half.exec(dt);
-                damping.exec(dt);
-                damping_ball_stress_relaxation_second_half.exec(dt);
+                ball_2_update_contact_density.exec();
+                ball_2_compute_solid_contact_forces.exec();
+                ball_2_stress_relaxation_first_half.exec(dt);
+                ball_2_stress_relaxation_second_half.exec(dt);
 
-                damping_ball.updateCellLinkedList();
-                damping_ball_contact.updateConfiguration();
+                ball_2.updateCellLinkedList();
+                ball_2_contact.updateConfiguration();
 
                 ite++;
-                Real dt_free = free_ball_get_time_step_size.exec();
-                Real dt_damping = damping_ball_get_time_step_size.exec();
-                dt = SMIN(dt_free, dt_damping);
+                Real dt_1 = ball_1_get_time_step_size.exec();
+                Real dt_2 = ball_2_get_time_step_size.exec();
+                dt = SMIN(dt_1, dt_2);
                 relaxation_time += dt;
                 integration_time += dt;
                 GlobalStaticVariables::physical_time_ += dt;
-
-                free_ball_displacement_recording.writeToFile(ite);
-                damping_ball_displacement_recording.writeToFile(ite);
             }
         }
         TickCount t2 = TickCount::now();
@@ -288,9 +262,6 @@ int main(int ac, char *av[])
     TimeInterval tt;
     tt = t4 - t1 - interval;
     std::cout << "Total wall time for computation: " << tt.seconds() << " seconds." << std::endl;
-
-    free_ball_displacement_recording.testResult();
-    damping_ball_displacement_recording.testResult();
 
     return 0;
 }
