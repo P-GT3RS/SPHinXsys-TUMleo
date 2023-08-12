@@ -108,10 +108,8 @@ class ViscousPlasticSolid : public PlasticSolid
     };
     virtual ~ViscousPlasticSolid(){};
 
-    // assign particles to this material
     virtual void initializeLocalParameters(BaseParticles *base_particles) override;
     Real ViscousModulus() { return viscous_modulus_; };
-    Real HerschelBulkleyPower_() { return Herschel_Bulkley_power_; };
     /** compute the stress through deformation, and plastic relaxation. */
     virtual Matd PlasticConstitutiveRelation(const Matd &deformation, size_t index_i, Real dt = 0.0) override;
 
