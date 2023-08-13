@@ -3,36 +3,48 @@ using namespace SPH;   // Namespace cite here.
 //----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real resolution_ref = 0.025; /* reference resolution. */
-Vec3d ball_center(0.0, 0.0, 1.0);
-BoundingBox system_domain_bounds(Vec3d(-1.5, -1.5, -0.5),
-                                 Vec3d(1.5, 1.5, 2.0));
-StdVec<Vecd> ball_observation_location = {ball_center};
-Real ball_radius = 0.5; /* R radius. m */
-Real column_radius = 0.15;
-Real column_length = 2.0;
+Real DL = 0.2;
+Real DH = 0.3;
+Real resolution_ref = 0.0025;
+Real BW = resolution_ref * 4;
+BoundingBox system_domain_bounds(Vec3d(-DL, -DL, -BW), Vec3d(DL, DL, DH));
+Real ball_radius = resolution_ref * 20;
+Real column_radius = resolution_ref * 4;
+Real column_length = DL;
 //----------------------------------------------------------------------
 //	Global parameters on material properties
 //----------------------------------------------------------------------
 // viscoplastic material
-Real gravity_g = 2.0;                                                                                   /* 过大会导致球体直接穿过地面,过小会导致球体刚接触地面就停止计算 */
+Real gravity_g = 1.0;                                                                                   
 Real rho0_s = 1.0e3;                                                                                    /* ρ density. kg/m^3 */
 Real Bulk_modulus = 1.09e5;                                                                             /* κ bulk modulus. Pa */
 Real Shear_modulus = 1.12e4;                                                                            /* μ/G shear modulus. Pa */
 Real yield_stress = 0.1;                                                                                /* σ_Y yield stress. Pa */
-Real viscous_modulus = 10.0;                                                                            /* η viscosity. 过大会导致理想粘塑性产生明显回弹,过小会导致球体无法产生回弹 */
+Real viscous_modulus = 10.0;                                                                            /* η viscosity. */
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa */
 Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ν Poisson's ratio. 取值(-1,0.5). 此处0.45 */
 Real Herschel_Bulkley_power = 1.0;                                                                      /* h Herschel_Bulkley_power. */
-
+//----------------------------------------------------------------------
+//	Geometric shapes
+//----------------------------------------------------------------------
+class BallBody : public ComplexShape
+{
+  public:
+    explicit BallBody(const std::string &shape_name) : ComplexShape(shape_name)
+    {
+        Vec3d translation_ball(0.0, 0.0, 0.5 * DH);
+        // number of faces: 32768 = 2*4*(5); 4096 = 2*4*(4)
+        add<TriangleMeshShapeSphere>(ball_radius, 6, translation_ball);
+    }
+};
 class Column_1 : public ComplexShape
 {
   public:
     explicit Column_1(const std::string &shape_name) : ComplexShape(shape_name)
     {
-        Vecd translation_column_1(0.0, -0.25, -0.1);
+        Vecd translation_column_1(0.0, -0.15 * DL, 0.0);
         add<TriangleMeshShapeCylinder>(SimTK::UnitVec3(1.0, 0.0, 0.0), column_radius,
-                                       column_length / 2.0, 50, translation_column_1);
+                                       column_length , 20, translation_column_1);
     }
 };
 class Column_2 : public ComplexShape
@@ -40,9 +52,9 @@ class Column_2 : public ComplexShape
   public:
     explicit Column_2(const std::string &shape_name) : ComplexShape(shape_name)
     {
-        Vecd translation_column_2(0.0, 0.25, -0.1);
+        Vecd translation_column_2(0.0, 0.15 * DL, 0.0);
         add<TriangleMeshShapeCylinder>(SimTK::UnitVec3(1.0, 0.0, 0.0), column_radius,
-                                       column_length / 2.0, 50, translation_column_2);
+                                       column_length , 20, translation_column_2);
     }
 };
 //----------------------------------------------------------------------
@@ -66,32 +78,24 @@ int main(int ac, char *av[])
     SolidBody column_1(sph_system, makeShared<Column_1>("Column_1"));
     column_1.defineBodyLevelSetShape();
     column_1.defineParticlesAndMaterial<SolidParticles, Solid>(rho0_s, Youngs_modulus, poisson);
-    column_1.generateParticles<ParticleGeneratorLattice>();
+    (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
+        ? column_1.generateParticles<ParticleGeneratorReload>(io_environment, column_1.getName())
+        : column_1.generateParticles<ParticleGeneratorLattice>();
 
     SolidBody column_2(sph_system, makeShared<Column_2>("Column_2"));
     column_2.defineBodyLevelSetShape();
     column_2.defineParticlesAndMaterial<SolidParticles, Solid>(rho0_s, Youngs_modulus, poisson);
-    column_2.generateParticles<ParticleGeneratorLattice>();
-
-    // 问题:用此方法生成八面体而非球体
-    // SolidBody ball(sph_system, makeShared<Ball>("Ball"));
-    // ball.defineBodyLevelSetShape()->writeLevelSet(io_environment);
-    // ball.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
-    //	yield_stress, viscous_modulus, Herschel_Bulkley_power);
-    //(!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
-    //	? ball.generateParticles<ParticleGeneratorReload>(io_environment, ball.getName())
-    //	: ball.generateParticles<ParticleGeneratorLattice>();
-
-    SolidBody ball(sph_system, makeShared<GeometricShapeBall>(ball_center, ball_radius, "BallBody"));
-    ball.defineBodyLevelSetShape()->writeLevelSet(io_environment);
-    ball.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
-                                                                                yield_stress, viscous_modulus, Herschel_Bulkley_power);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
-        ? ball.generateParticles<ParticleGeneratorReload>(io_environment, ball.getName())
-        : ball.generateParticles<ParticleGeneratorLattice>();
+        ? column_2.generateParticles<ParticleGeneratorReload>(io_environment, column_2.getName())
+        : column_2.generateParticles<ParticleGeneratorLattice>();
 
-    ObserverBody ball_observer(sph_system, "BallObserver");
-    ball_observer.generateParticles<ObserverParticleGenerator>(ball_observation_location);
+    SolidBody ball(sph_system, makeShared<BallBody>("BallBody"));
+    ball.defineBodyLevelSetShape();
+    ball.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
+    yield_stress, viscous_modulus, Herschel_Bulkley_power);
+    (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
+    	? ball.generateParticles<ParticleGeneratorReload>(io_environment, ball.getName())
+    	: ball.generateParticles<ParticleGeneratorLattice>();
     //----------------------------------------------------------------------
     //	Run particle relaxation for body-fitted distribution if chosen.
     //----------------------------------------------------------------------
@@ -141,7 +145,7 @@ int main(int ac, char *av[])
                 write_relaxed_particles.writeToFile(ite);
             }
         }
-        std::cout << "The physics relaxation process of ball particles finish !" << std::endl;
+        std::cout << "The physics relaxation process of particles finish !" << std::endl;
         write_particle_reload_files.writeToFile(0);
         return 0;
     }
@@ -152,12 +156,12 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     InnerRelation ball_inner(ball);
     SurfaceContactRelation ball_contact(ball, {&column_1, &column_2});
-    ContactRelation ball_observer_contact(ball_observer, {&ball});
     //----------------------------------------------------------------------
     //	Define the main numerical methods used in the simulation.
     //	Note that there may be data dependence on the constructors of these methods.
     //----------------------------------------------------------------------
-    SimpleDynamics<TimeStepInitialization> ball_initialize_timestep(ball, makeShared<Gravity>(Vec3d(0.0, 0.0, -gravity_g)));
+    SharedPtr<Gravity> gravity_ptr = makeShared<Gravity>(Vec3d(0.0, 0.0, -gravity_g));
+    SimpleDynamics<TimeStepInitialization> ball_initialize_timestep(ball, gravity_ptr);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_corrected_configuration(ball_inner);
     ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_get_time_step_size(ball, 0.1);
     /** stress relaxation for the balls. */
@@ -166,13 +170,10 @@ int main(int ac, char *av[])
     /** Algorithms for solid-solid contact. */
     InteractionDynamics<solid_dynamics::ContactDensitySummation> ball_update_contact_density(ball_contact);
     InteractionDynamics<solid_dynamics::ContactForceFromWall> ball_compute_solid_contact_forces(ball_contact);
-
     //----------------------------------------------------------------------
     //	Define the methods for I/O operations and observations of the simulation.
     //----------------------------------------------------------------------
     BodyStatesRecordingToVtp body_states_recording(io_environment, sph_system.real_bodies_);
-    RegressionTestDynamicTimeWarping<ObservedQuantityRecording<Vecd>>
-        write_ball_displacement("Position", io_environment, ball_observer_contact);
     //----------------------------------------------------------------------
     //	Prepare the simulation with cell linked list, configuration
     //	and case specified initial condition if necessary.
@@ -180,10 +181,13 @@ int main(int ac, char *av[])
     sph_system.initializeSystemCellLinkedLists();
     sph_system.initializeSystemConfigurations();
     ball_corrected_configuration.exec();
-    /** Initial states output. */
+    //----------------------------------------------------------------------
+    //	Initial states output.
+    //----------------------------------------------------------------------
     body_states_recording.writeToFile(0);
-    write_ball_displacement.writeToFile(0);
-    /** Main loop. */
+    //----------------------------------------------------------------------
+    //	Setup for time-stepping control
+    //----------------------------------------------------------------------
     int ite = 0;
     Real T0 = 2.0;
     Real end_time = T0;
@@ -226,7 +230,6 @@ int main(int ac, char *av[])
                 integration_time += dt;
                 GlobalStaticVariables::physical_time_ += dt;
             }
-            write_ball_displacement.writeToFile(ite);
         }
         TickCount t2 = TickCount::now();
         body_states_recording.writeToFile();
