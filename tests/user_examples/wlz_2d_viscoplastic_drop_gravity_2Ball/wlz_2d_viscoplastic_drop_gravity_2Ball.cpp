@@ -21,7 +21,7 @@ BoundingBox system_domain_bounds(Vec2d(-BW, -BW), Vec2d(DL + BW, DH + BW));
 //----------------------------------------------------------------------
 //	Global parameters on material properties
 //----------------------------------------------------------------------
-Real gravity_g = 1.0;
+Real gravity_g = 1.5;
 Real rho0_s = 1.0e3;
 Real Bulk_modulus = 1.09e5;
 Real Shear_modulus = 1.12e4;
@@ -167,8 +167,8 @@ int main(int ac, char *av[])
     SimpleDynamics<TimeStepInitialization> ball_2_initialize_timestep(ball_2, gravity_ptr);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_1_corrected_configuration(ball_1_inner);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_2_corrected_configuration(ball_2_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.05);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 0.05);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.02);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 0.02);
     /** stress relaxation for the balls. */
     Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_1_stress_relaxation_first_half(ball_1_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_1_stress_relaxation_second_half(ball_1_inner);
@@ -199,7 +199,7 @@ int main(int ac, char *av[])
     //	Setup for time-stepping control
     //----------------------------------------------------------------------
     int ite = 0;
-    Real T0 = 5.0; 
+    Real T0 = 2.5; 
     Real end_time = T0;
     Real output_interval = 0.01 * T0;
     Real Dt = 0.1 * output_interval;
