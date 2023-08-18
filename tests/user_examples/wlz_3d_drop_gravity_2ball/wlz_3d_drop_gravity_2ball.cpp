@@ -1,33 +1,32 @@
 /**
- * @file 	collision_viscoplastic_3D.cpp
- * @brief 	one ball with viscoplastic or oobleck material bouncing with a boundary
- * @details
+ * @file 	drop_gravity_3D.cpp
+ * @details two balls with viscoplastic and oobleck(shear thickening) material bouncing with a boundary wall
  * @author 	Liezhao Wu, Chi Zhang and Xiangyu Hu
  */
-#include "sphinxsys.h" // SPHinXsys Library.
-using namespace SPH;   // Namespace cite here.
+#include "sphinxsys.h"                 /* SPHinXsys Library. */
+using namespace SPH;                   /* Namespace cite here. */
 //----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real DL = 0.3;
-Real DH = 0.6;
-Real resolution_ref = 0.005; 
-Real BW = resolution_ref * 4;
-BoundingBox system_domain_bounds(Vec3d(-DL, -DL, -BW), Vec3d(DL, DL, DH));
-Real ball_radius = resolution_ref * 10;
+Real resolution_ref = 0.005;           /* reference resolution. */
+Real DL = 0.8;                         /* boundary wall length. */
+Real DH = 0.6;                         /* height. */
+Real BW = resolution_ref * 4;          /* boundary wall width. */
+Real ball_radius = resolution_ref * 12;/* ball radius. */
+BoundingBox system_domain_bounds(Vec3d(0.0, 0.0, -BW), Vec3d(0.5 * DL, DL, DH));
 //----------------------------------------------------------------------
-//	Global parameters on material properties
+//	Global parameters on material properties.
 //----------------------------------------------------------------------
 Real gravity_g = 1.0;
 Real rho0_s = 1.0e3;                                                                                    /* ρ density. kg/m^3 */
 Real Bulk_modulus = 1.09e5;                                                                             /* κ bulk modulus. Pa */
-Real Shear_modulus = 1.12e4;                                                                            /* μ/G shear modulus. Pa !!!adjust */
-Real yield_stress = 0.1;                                                                                /* σ_Y yield stress. Pa !!!adjust */
-Real viscous_modulus = 10.0;                                                                            /* η viscosity.  */
-Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa. 此处3.25e4 */
-Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ν Poisson's ratio. 取值(-1,0.5). 此处0.45 */
-Real Herschel_Bulkley_power_1 = 1.0;                                                                    /* h Herschel_Bulkley_power. */
-Real Herschel_Bulkley_power_2 = 2.8;                                                                    /* h Herschel_Bulkley_power. */
+Real Shear_modulus = 1.12e4;                                                                            /* μ/G shear modulus. Pa */
+Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa. */
+Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ν Poisson's ratio. */
+Real yield_stress = 0.1;                                                                                /* σ_Y yield stress. Pa */
+Real viscosity = 10.0;                                                                                  /* η viscosity. */
+Real Herschel_Bulkley_power_1 = 1.0;                                                                    /* viscoplastic material. */
+Real Herschel_Bulkley_power_2 = 2.8;                                                                    /* oobleck(shear thickening) material. */
 //----------------------------------------------------------------------
 //	Geometric shapes
 //----------------------------------------------------------------------
@@ -38,7 +37,7 @@ class WallBoundary : public ComplexShape
     {
         Vec3d halfsize_wall(0.5 * DL, DL, BW / 2.0);     
         Vec3d translation_wall(0.0, 0.0, 0.0); 
-        add<TriangleMeshShapeBrick>(halfsize_wall, 10, translation_wall);
+        add<TriangleMeshShapeBrick>(halfsize_wall, 1, translation_wall);
     }
 };
 class BallOne : public ComplexShape
@@ -46,8 +45,8 @@ class BallOne : public ComplexShape
   public:
     explicit BallOne(const std::string &shape_name) : ComplexShape(shape_name)
     {
-        Vec3d translation_ball(0.0, - 0.5 * DL, 0.5 * DH);
-        add<TriangleMeshShapeSphere>(ball_radius, 5, translation_ball);
+        Vec3d translation_ball_1(0.25 * DL, 0.3 * DL, 0.75 * DH);
+        add<TriangleMeshShapeSphere>(ball_radius, 5, translation_ball_1);
     }
 };
 class BallTwo : public ComplexShape
@@ -55,8 +54,8 @@ class BallTwo : public ComplexShape
   public:
     explicit BallTwo(const std::string &shape_name) : ComplexShape(shape_name)
     {
-        Vec3d translation_ball(0.0, 0.5 * DL, 0.5 * DH);
-        add<TriangleMeshShapeSphere>(ball_radius, 5, translation_ball);
+        Vec3d translation_ball_2(0.25 * DL, 0.7 * DL, 0.75 * DH);
+        add<TriangleMeshShapeSphere>(ball_radius, 5, translation_ball_2);
     }
 };
 //----------------------------------------------------------------------
@@ -69,9 +68,9 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     SPHSystem sph_system(system_domain_bounds, resolution_ref);
     /** Tag for running particle relaxation for the initially body-fitted distribution */
-    sph_system.setRunParticleRelaxation(false); // true
+    sph_system.setRunParticleRelaxation(false); /* true/false */
     /** Tag for starting with relaxed body-fitted particles distribution */
-    sph_system.setReloadParticles(true); // false
+    sph_system.setReloadParticles(true); 
     sph_system.handleCommandlineOptions(ac, av);
     IOEnvironment io_environment(sph_system);
     //----------------------------------------------------------------------
@@ -80,7 +79,7 @@ int main(int ac, char *av[])
     SolidBody ball_1(sph_system, makeShared<BallOne>("BallOne"));
     ball_1.defineBodyLevelSetShape();
     ball_1.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
-    yield_stress, viscous_modulus, Herschel_Bulkley_power_1);
+    yield_stress, viscosity, Herschel_Bulkley_power_1);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
         ? ball_1.generateParticles<ParticleGeneratorReload>(io_environment, ball_1.getName())
         : ball_1.generateParticles<ParticleGeneratorLattice>();
@@ -88,7 +87,7 @@ int main(int ac, char *av[])
     SolidBody ball_2(sph_system, makeShared<BallTwo>("BallTwo"));
     ball_2.defineBodyLevelSetShape();
     ball_2.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
-    yield_stress, viscous_modulus, Herschel_Bulkley_power_2);
+    yield_stress, viscosity, Herschel_Bulkley_power_2);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
         ? ball_2.generateParticles<ParticleGeneratorReload>(io_environment, ball_2.getName())
         : ball_2.generateParticles<ParticleGeneratorLattice>();
@@ -110,8 +109,8 @@ int main(int ac, char *av[])
         //	Define the methods for particle relaxation for ball.
         //----------------------------------------------------------------------
         SimpleDynamics<RandomizeParticlePosition> ball_1_random_particles(ball_1);
-        relax_dynamics::RelaxationStepInner ball_1_relaxation_step_inner(ball_1_inner);
         SimpleDynamics<RandomizeParticlePosition> ball_2_random_particles(ball_2);
+        relax_dynamics::RelaxationStepInner ball_1_relaxation_step_inner(ball_1_inner);
         relax_dynamics::RelaxationStepInner ball_2_relaxation_step_inner(ball_2_inner);
         //----------------------------------------------------------------------
         //	Output for particle relaxation.
@@ -162,8 +161,8 @@ int main(int ac, char *av[])
     SimpleDynamics<TimeStepInitialization> ball_2_initialize_timestep(ball_2, gravity_ptr);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_1_corrected_configuration(ball_1_inner);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_2_corrected_configuration(ball_2_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.1);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 0.1);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.05);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 0.05);
     /** stress relaxation for the ball. */
     Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_1_stress_relaxation_first_half(ball_1_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_1_stress_relaxation_second_half(ball_1_inner);
