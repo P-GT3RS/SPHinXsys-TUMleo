@@ -7,19 +7,21 @@
 #include "sphinxsys.h"
 using namespace SPH;
 //----------------------------------------------------------------------
+//	Set the file path to the data file.
+//----------------------------------------------------------------------
+std::string full_path_to_file = "./input/shaving_foam.stl";
+//----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real DL = 0.1; /* wall length. */
+Real DL = 0.2; 
 Real DH = 0.5;
-Real resolution_ref = 0.005;  /* reference resolution. */
+Real resolution_ref = 0.0025;  /* reference resolution. */
 Real BW = resolution_ref * 4; /* width for BCs. */
-BoundingBox system_domain_bounds(Vec3d(-DL, -DL, -DH), Vec3d(DL, DL, BW));
-Real cream_radius = resolution_ref * 15.0;
-Vec3d cream_center(0.0, 0.0, - cream_radius);
+BoundingBox system_domain_bounds(Vec3d(-DL, -DL, 0.0), Vec3d(DL, DL, DH));
 
 Real start_time = 0.0;
 Real end_time = 5.0;
-Vec3d translation(0.25, 0.0, 0.0);
+Vec3d displacement(0.2, 0.0, 0.0);
 int frequency = 5;
 //----------------------------------------------------------------------
 //	Global parameters on material properties
@@ -42,16 +44,8 @@ class Cream : public ComplexShape
   public:
     explicit Cream(const std::string &shape_name) : ComplexShape(shape_name)
     {
-        Vec3d halfsize_wall(DL, DL, BW / 2.0);
-        Vec3d translation_wall(0.0, 0.0, - BW / 2.0); // intermediate 
-        add<TriangleMeshShapeBrick>(halfsize_wall, 10, translation_wall);
-
-        //Vec3d translation_cylinder(0.0, 0.0, -cream_radius / 2.0); // intermediate 
-        //add<TriangleMeshShapeCylinder>(SimTK::UnitVec3(0.0, 0.0, 1.0),
-        //                               cream_radius, cream_radius / 2.0, 10, translation_cylinder);
-
-        Vec3d translation_ball(0.0, 0.0, -cream_radius);
-        add<TriangleMeshShapeSphere>(cream_radius, 5, translation_ball);
+        Vec3d translation(0.0, 0.0, DH / 2.0);
+        add<TriangleMeshShapeSTL>(full_path_to_file, translation, 0.02);
     }
 };
 //----------------------------------------------------------------------
@@ -135,16 +129,16 @@ int main(int ac, char *av[])
     SharedPtr<Gravity> gravity_ptr = makeShared<Gravity>(Vec3d(0.0, 0.0, -gravity_g));
     SimpleDynamics<TimeStepInitialization> cream_initialize_gravity(cream, gravity_ptr);
     InteractionWithUpdate<CorrectedConfigurationInner> cream_corrected_configuration(cream_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> cream_get_time_step_size(cream, 0.2);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> cream_get_time_step_size(cream, 0.5);
     /** stress relaxation for the foam. */
     Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> cream_stress_relaxation_first_half(cream_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> cream_stress_relaxation_second_half(cream_inner);
 
-    Vec3d halfsize(DL, DL, BW / 2.0);
-    Vec3d translation(0.0, 0.0, -BW / 2.0);
+    Vec3d halfsize(DL, DL, 0.025);
+    Vec3d translation(0.0, 0.0, DH / 2.0);
     BodyRegionByParticle wall_boundary(cream, makeShared<TriangleMeshShapeBrick>(halfsize, 10, translation));
     SimpleDynamics<solid_dynamics::FixBodyPartConstraint> wall_constraint(wall_boundary);
-    SimpleDynamics<solid_dynamics::ForthAndBackMotionBodyPart> wall_initialize_motion(wall_boundary, start_time, end_time, translation, frequency);
+    SimpleDynamics<solid_dynamics::ForthAndBackMotionBodyPart> wall_initialize_motion(wall_boundary, start_time, end_time, displacement, frequency);
     //----------------------------------------------------------------------
     //	Define the methods for I/O operations and observations of the simulation.
     //----------------------------------------------------------------------
@@ -186,7 +180,7 @@ int main(int ac, char *av[])
             while (relaxation_time < Dt)
             {
                 cream_initialize_gravity.exec();
-                // wall_initialize_motion.exec(dt);
+                //wall_initialize_motion.exec(dt);
                 if (ite % 100 == 0)
                 {
                     std::cout << "N=" << ite << " Time: "
