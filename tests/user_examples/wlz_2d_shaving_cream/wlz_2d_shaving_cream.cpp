@@ -1,54 +1,76 @@
-#include "sphinxsys.h"
-using namespace SPH;
+/**
+ * @file 	shaving_cream_drop_2D.cpp
+ * @details shaving cream attached to the platform falls due to gravity
+ * @author 	Liezhao Wu, Chi Zhang and Xiangyu Hu
+ */
+#include "sphinxsys.h"         /* SPHinXsys Library. */
+using namespace SPH;           /* Namespace cite here. */
 //----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real DL = 2.0;                /* wall length. */
-Real DH = 0.25;               /* wall thickness. */
-Real resolution_ref = 0.02;   /* reference resolution. */
-Real BW = resolution_ref * 4; /* width for BCs. */
-BoundingBox system_domain_bounds(Vec2d(-DL / 2.0 - BW, -DL), Vec2d(DL / 2.0 + BW, DH + BW));
-Real foam_radius = 0.5;
-Vec2d foam_center(0.0, DH - foam_radius);
-StdVec<Vecd> observation_location = {foam_center}; /* observer location. */
+Real resolution_ref = 0.002;   /* reference resolution. */
+Real DL = 0.5;                 /* platform length. */
+Real DH = 2.0;                 /* height. */
+Real BW = resolution_ref * 5.0;/* width for BCs. */
+Real cream_radius = resolution_ref * 50.0;
+Vec2d cream_center(0.0, -cream_radius);
+BoundingBox system_domain_bounds(Vec2d(-DL, -DH), Vec2d(DL, BW));
+Real sqrt_3 = sqrt(3);
 //----------------------------------------------------------------------
-//	Global parameters on material properties
+//	Global parameters on material properties.
 //----------------------------------------------------------------------
-// shaving cream
+Real gravity_g = 9.8;
+// shaving cream material
 Real rho0_s = 77.7;                 /* ¦Ñ density. kg/m^3 */
 Real Bulk_modulus = 1.09e5;         /* ¦Ê bulk modulus. Pa */
-Real Shear_modulus = 290;           /* ¦Ì/G shear modulus. Pa */
+Real Shear_modulus = 290.0;         /* ¦Ì/G shear modulus. Pa */
 Real yield_stress = 31.9;           /* ¦Ò_Y yield stress. Pa */
-Real viscous_modulus = 27.2;        /* ¦Ç viscosity. */
+Real viscosity = 27.2;              /* ¦Ç viscosity. */
 Real Herschel_Bulkley_power = 0.22; /* h Herschel_Bulkley_power. */
-//  2D formula
-// Real Youngs_modulus = (4.0 * Shear_modulus * Bulk_modulus) / (Bulk_modulus + Shear_modulus);
-// Real poisson = (Bulk_modulus - Shear_modulus) / (Bulk_modulus + Shear_modulus);
-//  3D formula
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa */
-Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* Poisson's ratio. */
-Real gravity_g = 9.8;
-std::vector<Vecd> wall_shape{Vecd(-DL / 2.0, 0.0), Vecd(-DL / 2.0, DH),
-                             Vecd(DL / 2.0, DH), Vecd(DL / 2.0, 0.0), Vecd(-DL / 2.0, 0.0)};
-std::vector<Vecd> foam_base_shape{Vecd(-foam_radius, DH - foam_radius), Vecd(-foam_radius, 0.0),
-                                  Vecd(foam_radius, 0.0), Vecd(foam_radius, DH - foam_radius), Vecd(-foam_radius, DH - foam_radius)};
+Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ¦Í Poisson's ratio. */
+//----------------------------------------------------------------------
+//	define geometries for SPH body.
+//----------------------------------------------------------------------
+std::vector<Vecd> createPlatformShape()
+{
+    std::vector<Vecd> platform_shape;
+    platform_shape.push_back(Vecd(-0.5 * DL, 0.0));
+    platform_shape.push_back(Vecd(-0.5 * DL, BW));
+    platform_shape.push_back(Vecd(0.5 * DL, BW));
+    platform_shape.push_back(Vecd(0.5 * DL, 0.0));
+    platform_shape.push_back(Vecd(-0.5 * DL, 0.0));
+
+    return platform_shape;
+}
+std::vector<Vecd> createCreamUpperShape()
+{
+    std::vector<Vecd> cream_upper_shape;
+    cream_upper_shape.push_back(Vecd(-sqrt_3 * cream_radius, 0.0));
+    cream_upper_shape.push_back(Vecd(sqrt_3 * cream_radius, 0.0));
+    cream_upper_shape.push_back(Vecd(sqrt_3 * cream_radius / 2.0, -3.0 * cream_radius / 2.0));
+    cream_upper_shape.push_back(Vecd(-sqrt_3 * cream_radius / 2.0, -3.0 * cream_radius / 2.0));
+    cream_upper_shape.push_back(Vecd(-sqrt_3 * cream_radius, 0.0));
+
+    return cream_upper_shape;
+}
 //----------------------------------------------------------------------
 //	Geometric shapes
 //----------------------------------------------------------------------
-class Foam : public MultiPolygonShape
+class Cream : public MultiPolygonShape
 {
   public:
-    explicit Foam(const std::string &shape_name) : MultiPolygonShape(shape_name)
+    explicit Cream(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
-        multi_polygon_.addAPolygon(wall_shape, ShapeBooleanOps::add);
-        multi_polygon_.addAPolygon(foam_base_shape, ShapeBooleanOps::add);
-        multi_polygon_.addACircle(foam_center, foam_radius, 100, ShapeBooleanOps::add);
+        multi_polygon_.addAPolygon(createPlatformShape(), ShapeBooleanOps::add);
+        multi_polygon_.addAPolygon(createCreamUpperShape(), ShapeBooleanOps::add);
+        multi_polygon_.addACircle(cream_center, cream_radius, 100, ShapeBooleanOps::add);
     }
 };
-MultiPolygon createFoamConstrainShape()
+MultiPolygon createPlatformConstraint()
 {
     MultiPolygon multi_polygon;
-    multi_polygon.addAPolygon(wall_shape, ShapeBooleanOps::add);
+    multi_polygon.addAPolygon(createPlatformShape(), ShapeBooleanOps::add);
     return multi_polygon;
 };
 //----------------------------------------------------------------------
@@ -69,17 +91,13 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     //	Creating body, materials and particles.
     //----------------------------------------------------------------------
-    SolidBody foam(sph_system, makeShared<Foam>("Foam"));
-    foam.defineBodyLevelSetShape();
-    foam.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
-    yield_stress, viscous_modulus, Herschel_Bulkley_power);
+    SolidBody cream(sph_system, makeShared<Cream>("Cream"));
+    cream.defineBodyLevelSetShape();
+    cream.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
+    yield_stress, viscosity, Herschel_Bulkley_power);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
-        ? foam.generateParticles<ParticleGeneratorReload>(io_environment, foam.getName())
-        : foam.generateParticles<ParticleGeneratorLattice>();
-
-    ObserverBody foam_observer(sph_system, "FoamObserver");
-    foam_observer.generateParticles<ObserverParticleGenerator>(observation_location);
-
+        ? cream.generateParticles<ParticleGeneratorReload>(io_environment, cream.getName())
+        : cream.generateParticles<ParticleGeneratorLattice>();
     //----------------------------------------------------------------------
     //	Run particle relaxation for body-fitted distribution if chosen.
     //----------------------------------------------------------------------
@@ -88,22 +106,22 @@ int main(int ac, char *av[])
         //----------------------------------------------------------------------
         //	Define body relation map used for particle relaxation.
         //----------------------------------------------------------------------
-        InnerRelation foam_inner(foam);
+        InnerRelation cream_inner(cream);
         //----------------------------------------------------------------------
         //	Define the methods for particle relaxation.
         //----------------------------------------------------------------------
-        SimpleDynamics<RandomizeParticlePosition> foam_random_particles(foam);
-        relax_dynamics::RelaxationStepInner foam_relaxation_step_inner(foam_inner);
+        SimpleDynamics<RandomizeParticlePosition> cream_random_particles(cream);
+        relax_dynamics::RelaxationStepInner cream_relaxation_step_inner(cream_inner);
         //----------------------------------------------------------------------
         //	Output for particle relaxation.
         //----------------------------------------------------------------------
-        BodyStatesRecordingToVtp write_foam_state(io_environment, sph_system.real_bodies_);
-        ReloadParticleIO write_particle_reload_files(io_environment, {&foam});
+        BodyStatesRecordingToVtp write_cream_state(io_environment, sph_system.real_bodies_);
+        ReloadParticleIO write_particle_reload_files(io_environment, cream);
         //----------------------------------------------------------------------
         //	Particle relaxation starts here.
         //----------------------------------------------------------------------
-        foam_random_particles.exec(0.25);
-        write_foam_state.writeToFile(0);
+        cream_random_particles.exec(0.25);
+        write_cream_state.writeToFile(0);
         //----------------------------------------------------------------------
         //	From here iteration for particle relaxation begins.
         //----------------------------------------------------------------------
@@ -111,15 +129,15 @@ int main(int ac, char *av[])
         int relax_step = 1000;
         while (ite < relax_step)
         {
-            foam_relaxation_step_inner.exec();
+            cream_relaxation_step_inner.exec();
             ite += 1;
             if (ite % 100 == 0)
             {
                 std::cout << std::fixed << std::setprecision(9) << "Relaxation steps N = " << ite << "\n";
-                write_foam_state.writeToFile(ite);
+                write_cream_state.writeToFile(ite);
             }
         }
-        std::cout << "The physics relaxation process of ball particles finish !" << std::endl;
+        std::cout << "The physics relaxation process of cream particles finish !" << std::endl;
         write_particle_reload_files.writeToFile(0);
         return 0;
     }
@@ -128,41 +146,36 @@ int main(int ac, char *av[])
     //	The contact map gives the topological connections between the bodies.
     //	Basically the the range of bodies to build neighbor particle lists.
     //----------------------------------------------------------------------
-    InnerRelation foam_inner(foam);
-    ContactRelation foam_observer_contact(foam_observer, {&foam});
+    InnerRelation cream_inner(cream);
     //----------------------------------------------------------------------
     //	Define the main numerical methods used in the simulation.
     //	Note that there may be data dependence on the constructors of these methods.
     //----------------------------------------------------------------------
     SharedPtr<Gravity> gravity_ptr = makeShared<Gravity>(Vecd(0.0, -gravity_g));
-    SimpleDynamics<TimeStepInitialization> foam_initialize_timestep(foam, gravity_ptr);
-    InteractionWithUpdate<CorrectedConfigurationInner> foam_corrected_configuration(foam_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> foam_get_time_step_size(foam, 0.2);
+    SimpleDynamics<TimeStepInitialization> cream_initialize_gravity(cream, gravity_ptr);
+    InteractionWithUpdate<CorrectedConfigurationInner> cream_corrected_configuration(cream_inner);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> cream_get_time_step_size(cream, 0.2);
     /** stress relaxation for the foam. */
-    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> foam_stress_relaxation_first_half(foam_inner);
-    Dynamics1Level<solid_dynamics::Integration2ndHalf> foam_stress_relaxation_second_half(foam_inner);
-    /** Algorithms for solid-solid contact. */
-    // clamping a solid body part. This is softer than a direct constraint
-    BodyRegionByParticle foam_base(foam, makeShared<MultiPolygonShape>(createFoamConstrainShape()));
-    SimpleDynamics<solid_dynamics::FixBodyPartConstraint> constraint_foam_base(foam_base);
+    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> cream_stress_relaxation_first_half(cream_inner);
+    Dynamics1Level<solid_dynamics::Integration2ndHalf> cream_stress_relaxation_second_half(cream_inner);
+    /** constraint for the foam. */
+    BodyRegionByParticle platform(cream, makeShared<MultiPolygonShape>(createPlatformConstraint()));
+    SimpleDynamics<solid_dynamics::FixBodyPartConstraint> platform_constraint(platform);
     //----------------------------------------------------------------------
     //	Define the methods for I/O operations and observations of the simulation.
     //----------------------------------------------------------------------
     BodyStatesRecordingToVtp body_states_recording(io_environment, sph_system.real_bodies_);
-    RegressionTestDynamicTimeWarping<ObservedQuantityRecording<Vecd>>
-        foam_displacement_recording("Position", io_environment, foam_observer_contact);
     //----------------------------------------------------------------------
     //	Prepare the simulation with cell linked list, configuration
     //	and case specified initial condition if necessary.
     //----------------------------------------------------------------------
     sph_system.initializeSystemCellLinkedLists();
     sph_system.initializeSystemConfigurations();
-    foam_corrected_configuration.exec();
+    cream_corrected_configuration.exec();
     //----------------------------------------------------------------------
     //	Initial states output.
     //----------------------------------------------------------------------
     body_states_recording.writeToFile(0);
-    foam_displacement_recording.writeToFile(0);
     //----------------------------------------------------------------------
     //	Setup for time-stepping control
     //----------------------------------------------------------------------
@@ -188,25 +201,23 @@ int main(int ac, char *av[])
             Real relaxation_time = 0.0;
             while (relaxation_time < Dt)
             {
-                foam_initialize_timestep.exec();
+                cream_initialize_gravity.exec();
                 if (ite % 100 == 0)
                 {
                     std::cout << "N=" << ite << " Time: "
                               << GlobalStaticVariables::physical_time_ << "	dt: " << dt << "\n";
                 }
-                foam_stress_relaxation_first_half.exec(dt);
-                constraint_foam_base.exec();
-                foam_stress_relaxation_second_half.exec(dt);
+                cream_stress_relaxation_first_half.exec(dt);
+                platform_constraint.exec(dt);
+                cream_stress_relaxation_second_half.exec(dt);
 
-                foam.updateCellLinkedList();
+                cream.updateCellLinkedList();
 
                 ite++;
-                dt = foam_get_time_step_size.exec();
+                dt = cream_get_time_step_size.exec();
                 relaxation_time += dt;
                 integration_time += dt;
                 GlobalStaticVariables::physical_time_ += dt;
-
-                foam_displacement_recording.writeToFile(ite);
             }
         }
         TickCount t2 = TickCount::now();
@@ -219,8 +230,6 @@ int main(int ac, char *av[])
     TimeInterval tt;
     tt = t4 - t1 - interval;
     std::cout << "Total wall time for computation: " << tt.seconds() << " seconds." << std::endl;
-
-    foam_displacement_recording.testResult();
 
     return 0;
 }
