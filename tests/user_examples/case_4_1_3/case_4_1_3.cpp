@@ -1,57 +1,76 @@
 /**
- * @file 	collision_viscoplastic.cpp
- * @brief 	one ball with viscoplastic or oobleck material bouncing with a boundary
- * @details
+ * @file 	4.1.3 Shaving_Cream_Drop.cpp
+ * @brief   Shaving cream adhering to the platform falls due to gravity.
  * @author 	Liezhao Wu, Chi Zhang and Xiangyu Hu
  */
-#include "sphinxsys.h" //SPHinXsys Library.
-using namespace SPH;   // Namespace cite here.
+#include "sphinxsys.h"         /* SPHinXsys Library. */
+using namespace SPH;           /* Namespace cite here. */
 //----------------------------------------------------------------------
 //	Basic geometry parameters and numerical setup.
 //----------------------------------------------------------------------
-Real DL = 0.6;                          /**< box length. */
-Real DH = 0.6;                          /**< box height. */
-Real resolution_ref = 0.002;            /**< reference resolution. */
-Real BW = resolution_ref * 4;           /**< wall width for BCs. */
-BoundingBox system_domain_bounds(Vec2d(-BW, -BW), Vec2d(DL + BW, DH + BW));
-Vec2d ball_center(0.5 * DL, 0.5 * DH);
-Real ball_radius = resolution_ref * 25; /**< radius of ball. 30 particles */
+Real resolution_ref = 0.002;    /* reference resolution. */
+Real DL = 0.5;                  /* platform length. */
+Real DH = 2.0;                  /* height. */
+Real BW = resolution_ref * 5.0; /* width for BCs. */
+Real cream_radius = resolution_ref * 50.0;
+Vec2d cream_center(0.0, -cream_radius);
+BoundingBox system_domain_bounds(Vec2d(-DL, -DH), Vec2d(DL, BW));
+Real sqrt_3 = sqrt(3);
+// observer location
+StdVec<Vecd> observation_location = {cream_center};
 //----------------------------------------------------------------------
-//	Global parameters on material properties
+//	Global parameters on material properties.
 //----------------------------------------------------------------------
-Real gravity_g = 1.0;
-Real rho0_s = 1.0e3;
-Real Bulk_modulus = 1.09e5;
-Real Shear_modulus = 1.12e4;
-Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); 
-Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);
-Real yield_stress = 0.1;
-Real viscous_modulus = 10.0;
-Real Herschel_Bulkley_power = 2.8; // oobleck with 2.8 or viscoplastic with 1.0
+Real gravity_g = 9.8;
+// shaving cream material
+Real rho0_s = 77.7;                                                                                     /* ¦Ñ density. kg/m^3 */
+Real Bulk_modulus = 1.09e5;                                                                             /* ¦Ê bulk modulus. Pa */
+Real Shear_modulus = 290.0;                                                                             /* ¦Ì/G shear modulus. Pa */
+Real yield_stress = 31.9;                                                                               /* ¦Ò_Y yield stress. Pa */
+Real viscosity = 27.2;                                                                                  /* ¦Ç viscosity. */
+Real Herschel_Bulkley_power = 0.22;                                                                     /* h Herschel_Bulkley_power. */
+Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa */
+Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ¦Í Poisson's ratio. */
 //----------------------------------------------------------------------
-//	Geometric shapes
+//	Geometric shapes.
 //----------------------------------------------------------------------
-class WallBoundary : public MultiPolygonShape
+std::vector<Vecd> createPlatformShape()
+{
+    std::vector<Vecd> platform_shape;
+    platform_shape.push_back(Vecd(-0.5 * DL, 0.0));
+    platform_shape.push_back(Vecd(-0.5 * DL, BW));
+    platform_shape.push_back(Vecd(0.5 * DL, BW));
+    platform_shape.push_back(Vecd(0.5 * DL, 0.0));
+    platform_shape.push_back(Vecd(-0.5 * DL, 0.0));
+
+    return platform_shape;
+}
+std::vector<Vecd> createCreamUpperShape()
+{
+    std::vector<Vecd> cream_upper_shape;
+    cream_upper_shape.push_back(Vecd(-sqrt_3 * cream_radius, 0.0));
+    cream_upper_shape.push_back(Vecd(sqrt_3 * cream_radius, 0.0));
+    cream_upper_shape.push_back(Vecd(sqrt_3 * cream_radius / 2.0, -3.0 * cream_radius / 2.0));
+    cream_upper_shape.push_back(Vecd(-sqrt_3 * cream_radius / 2.0, -3.0 * cream_radius / 2.0));
+    cream_upper_shape.push_back(Vecd(-sqrt_3 * cream_radius, 0.0));
+
+    return cream_upper_shape;
+}
+class Cream : public MultiPolygonShape
 {
   public:
-    explicit WallBoundary(const std::string &shape_name) : MultiPolygonShape(shape_name)
+    explicit Cream(const std::string &shape_name) : MultiPolygonShape(shape_name)
     {
-        std::vector<Vecd> wall_boundary_shape;
-        wall_boundary_shape.push_back(Vecd(0.0, -BW));
-        wall_boundary_shape.push_back(Vecd(0.0, 0.0));
-        wall_boundary_shape.push_back(Vecd(DL, 0.0));
-        wall_boundary_shape.push_back(Vecd(DL, -BW));
-        wall_boundary_shape.push_back(Vecd(0.0, -BW));
-        multi_polygon_.addAPolygon(wall_boundary_shape, ShapeBooleanOps::add);
+        multi_polygon_.addAPolygon(createPlatformShape(), ShapeBooleanOps::add);
+        multi_polygon_.addAPolygon(createCreamUpperShape(), ShapeBooleanOps::add);
+        multi_polygon_.addACircle(cream_center, cream_radius, 100, ShapeBooleanOps::add);
     }
 };
-class Ball : public MultiPolygonShape
+MultiPolygon createPlatformConstraint()
 {
-  public:
-    explicit Ball(const std::string &shape_name) : MultiPolygonShape(shape_name)
-    {
-        multi_polygon_.addACircle(ball_center, ball_radius, 100, ShapeBooleanOps::add);
-    }
+    MultiPolygon multi_polygon;
+    multi_polygon.addAPolygon(createPlatformShape(), ShapeBooleanOps::add);
+    return multi_polygon;
 };
 //----------------------------------------------------------------------
 //	Main program starts here.
@@ -63,7 +82,7 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     SPHSystem sph_system(system_domain_bounds, resolution_ref);
     /** Tag for running particle relaxation for the initially body-fitted distribution */
-    sph_system.setRunParticleRelaxation(false); // false
+    sph_system.setRunParticleRelaxation(false);
     /** Tag for starting with relaxed body-fitted particles distribution */
     sph_system.setReloadParticles(true);
     sph_system.handleCommandlineOptions(ac, av);
@@ -71,17 +90,16 @@ int main(int ac, char *av[])
     //----------------------------------------------------------------------
     //	Creating body, materials and particles.
     //----------------------------------------------------------------------
-    SolidBody ball(sph_system, makeShared<Ball>("Ball"));
-    ball.defineBodyLevelSetShape();
-    ball.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson, 
-        yield_stress, viscous_modulus, Herschel_Bulkley_power);
+    SolidBody cream(sph_system, makeShared<Cream>("Cream"));
+    cream.defineBodyLevelSetShape();
+    cream.defineParticlesAndMaterial<ElasticSolidParticles, ViscousPlasticSolid>(rho0_s, Youngs_modulus, poisson,
+                                                                                 yield_stress, viscosity, Herschel_Bulkley_power);
     (!sph_system.RunParticleRelaxation() && sph_system.ReloadParticles())
-        ? ball.generateParticles<ParticleGeneratorReload>(io_environment, ball.getName())
-        : ball.generateParticles<ParticleGeneratorLattice>();
+        ? cream.generateParticles<ParticleGeneratorReload>(io_environment, cream.getName())
+        : cream.generateParticles<ParticleGeneratorLattice>();
 
-    SolidBody wall_boundary(sph_system, makeShared<WallBoundary>("WallBoundary"));
-    wall_boundary.defineParticlesAndMaterial<SolidParticles, Solid>(rho0_s, Youngs_modulus, poisson);
-    wall_boundary.generateParticles<ParticleGeneratorLattice>();
+    ObserverBody cream_observer(sph_system, "CreamObserver");
+    cream_observer.generateParticles<ObserverParticleGenerator>(observation_location);
     //----------------------------------------------------------------------
     //	Run particle relaxation for body-fitted distribution if chosen.
     //----------------------------------------------------------------------
@@ -90,22 +108,22 @@ int main(int ac, char *av[])
         //----------------------------------------------------------------------
         //	Define body relation map used for particle relaxation.
         //----------------------------------------------------------------------
-        InnerRelation ball_inner(ball);
+        InnerRelation cream_inner(cream);
         //----------------------------------------------------------------------
         //	Define the methods for particle relaxation.
         //----------------------------------------------------------------------
-        SimpleDynamics<RandomizeParticlePosition> ball_random_particles(ball);
-        relax_dynamics::RelaxationStepInner ball_relaxation_step_inner(ball_inner);
+        SimpleDynamics<RandomizeParticlePosition> cream_random_particles(cream);
+        relax_dynamics::RelaxationStepInner cream_relaxation_step_inner(cream_inner);
         //----------------------------------------------------------------------
         //	Output for particle relaxation.
         //----------------------------------------------------------------------
-        BodyStatesRecordingToVtp write_ball_state(io_environment, sph_system.real_bodies_);
-        ReloadParticleIO write_particle_reload_files(io_environment, ball);
+        BodyStatesRecordingToVtp write_cream_state(io_environment, sph_system.real_bodies_);
+        ReloadParticleIO write_particle_reload_files(io_environment, cream);
         //----------------------------------------------------------------------
         //	Particle relaxation starts here.
         //----------------------------------------------------------------------
-        ball_random_particles.exec(0.25);
-        write_ball_state.writeToFile(0);
+        cream_random_particles.exec(0.25);
+        write_cream_state.writeToFile(0);
         //----------------------------------------------------------------------
         //	From here iteration for particle relaxation begins.
         //----------------------------------------------------------------------
@@ -113,15 +131,15 @@ int main(int ac, char *av[])
         int relax_step = 1000;
         while (ite < relax_step)
         {
-            ball_relaxation_step_inner.exec();
+            cream_relaxation_step_inner.exec();
             ite += 1;
             if (ite % 100 == 0)
             {
                 std::cout << std::fixed << std::setprecision(9) << "Relaxation steps N = " << ite << "\n";
-                write_ball_state.writeToFile(ite);
+                write_cream_state.writeToFile(ite);
             }
         }
-        std::cout << "The physics relaxation process of ball particles finish !" << std::endl;
+        std::cout << "The physics relaxation process of cream particles finish !" << std::endl;
         write_particle_reload_files.writeToFile(0);
         return 0;
     }
@@ -130,42 +148,45 @@ int main(int ac, char *av[])
     //	The contact map gives the topological connections between the bodies.
     //	Basically the the range of bodies to build neighbor particle lists.
     //----------------------------------------------------------------------
-    InnerRelation ball_inner(ball);
-    SurfaceContactRelation ball_contact(ball, {&wall_boundary});
+    InnerRelation cream_inner(cream);
+    ContactRelation cream_observer_contact(cream_observer, {&cream});
     //----------------------------------------------------------------------
     //	Define the main numerical methods used in the simulation.
     //	Note that there may be data dependence on the constructors of these methods.
     //----------------------------------------------------------------------
     SharedPtr<Gravity> gravity_ptr = makeShared<Gravity>(Vecd(0.0, -gravity_g));
-    SimpleDynamics<TimeStepInitialization> ball_initialize_timestep(ball, gravity_ptr);
-    InteractionWithUpdate<CorrectedConfigurationInner> ball_corrected_configuration(ball_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_get_time_step_size(ball, 0.1);
+    SimpleDynamics<TimeStepInitialization> cream_initialize_timestep(cream, gravity_ptr);
+    InteractionWithUpdate<CorrectedConfigurationInner> cream_corrected_configuration(cream_inner);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> cream_get_time_step_size(cream, 0.2);
     /** stress relaxation for the balls. */
-    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_stress_relaxation_first_half(ball_inner);
-    Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_stress_relaxation_second_half(ball_inner);
-    /** Algorithms for solid-solid contact. */
-    InteractionDynamics<solid_dynamics::ContactDensitySummation> ball_update_contact_density(ball_contact);
-    InteractionDynamics<solid_dynamics::ContactForceFromWall> ball_compute_solid_contact_forces(ball_contact);
+    Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> cream_stress_relaxation_first_half(cream_inner);
+    Dynamics1Level<solid_dynamics::Integration2ndHalf> cream_stress_relaxation_second_half(cream_inner);
+    /** constraint for the cream. */
+    BodyRegionByParticle platform(cream, makeShared<MultiPolygonShape>(createPlatformConstraint()));
+    SimpleDynamics<solid_dynamics::FixBodyPartConstraint> platform_constraint(platform);
     //----------------------------------------------------------------------
     //	Define the methods for I/O operations and observations of the simulation.
     //----------------------------------------------------------------------
     BodyStatesRecordingToVtp body_states_recording(io_environment, sph_system.real_bodies_);
+    RegressionTestDynamicTimeWarping<ObservedQuantityRecording<Vecd>>
+        cream_displacement_recording("Position", io_environment, cream_observer_contact);
     //----------------------------------------------------------------------
     //	Prepare the simulation with cell linked list, configuration
     //	and case specified initial condition if necessary.
     //----------------------------------------------------------------------
     sph_system.initializeSystemCellLinkedLists();
     sph_system.initializeSystemConfigurations();
-    ball_corrected_configuration.exec();
+    cream_corrected_configuration.exec();
     //----------------------------------------------------------------------
     //	Initial states output.
     //----------------------------------------------------------------------
     body_states_recording.writeToFile(0);
+    cream_displacement_recording.writeToFile(0);
     //----------------------------------------------------------------------
     //	Setup for time-stepping control
     //----------------------------------------------------------------------
     int ite = 0;
-    Real T0 = 3.0;
+    Real T0 = 1.0;
     Real end_time = T0;
     Real output_interval = 0.01 * T0;
     Real Dt = 0.1 * output_interval;
@@ -186,25 +207,25 @@ int main(int ac, char *av[])
             Real relaxation_time = 0.0;
             while (relaxation_time < Dt)
             {
-                ball_initialize_timestep.exec();
+                cream_initialize_timestep.exec();
                 if (ite % 100 == 0)
                 {
                     std::cout << "N=" << ite << " Time: "
                               << GlobalStaticVariables::physical_time_ << "	dt: " << dt << "\n";
                 }
-                ball_update_contact_density.exec();
-                ball_compute_solid_contact_forces.exec();
-                ball_stress_relaxation_first_half.exec(dt);
-                ball_stress_relaxation_second_half.exec(dt);
+                cream_stress_relaxation_first_half.exec(dt);
+                platform_constraint.exec(dt);
+                cream_stress_relaxation_second_half.exec(dt);
 
-                ball.updateCellLinkedList();
-                ball_contact.updateConfiguration();
+                cream.updateCellLinkedList();
 
                 ite++;
-                dt = ball_get_time_step_size.exec();
+                dt = cream_get_time_step_size.exec();
                 relaxation_time += dt;
                 integration_time += dt;
                 GlobalStaticVariables::physical_time_ += dt;
+
+                 cream_displacement_recording.writeToFile(ite);
             }
         }
         TickCount t2 = TickCount::now();
@@ -217,6 +238,8 @@ int main(int ac, char *av[])
     TimeInterval tt;
     tt = t4 - t1 - interval;
     std::cout << "Total wall time for computation: " << tt.seconds() << " seconds." << std::endl;
+
+    cream_displacement_recording.testResult();
 
     return 0;
 }
