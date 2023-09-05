@@ -51,23 +51,14 @@ void ViscousPlasticSolid::initializeLocalParameters(BaseParticles *base_particle
 //=================================================================================================//
 Matd ViscousPlasticSolid::PlasticConstitutiveRelation(const Matd &F, size_t index_i, Real dt)
 {
-    // b_e_trial_n+1 = F_n+1 * C_p_-1_n * F_T_n+1 ?
     Matd be = F * inverse_plastic_strain_[index_i] * F.transpose();
-    // b_e_-_trial_n+1 = b_e_trial_n+1 * det[b_e_trial_n+1]^(-1/3)
     Matd normalized_be = be * pow(be.determinant(), -OneOverDimensions);
-    // I_e_-_n+1 = Tr[b_e_-_trial_n+1]/3 
     Real normalized_be_isentropic = normalized_be.trace() * OneOverDimensions;
-    // deviatoric operator: dev[X] = X - Tr[X]/3 * I
-    // deviatoric part of Kirchhoff stress tensor: 
-    // S_trial_n+1 = 米 * dev[b_e_-_trial_n+1] = G0 * (b_e_-_trial_n+1 - Tr[b_e_-_trial_n+1]/3 * I) 
     Matd deviatoric_K = DeviatoricKirchhoff(normalized_be - normalized_be_isentropic * Matd::Identity());
-    // Frobenius norm: s_trial_n+1 = ||S_trial_n+1||F
     Real deviatoric_K_norm = deviatoric_K.norm();
-    // yield condition: f = s_trial_n+1 - sqrt(2/3) * 考_Y
     Real trial_function = deviatoric_K_norm - sqrt_2_over_3_ * yield_stress_; 
 	if (trial_function > 0.0)
     {
-        // 米_~ = I_e_-_n+1 * 米 = Tr[b_e_-_trial_n+1]/3 * 米
         Real renormalized_shear_modulus = normalized_be_isentropic * G0_;
         Real s_Mid = 0.0;
         Real s_Max = deviatoric_K_norm;
@@ -90,26 +81,15 @@ Matd ViscousPlasticSolid::PlasticConstitutiveRelation(const Matd &F, size_t inde
             }
             Relative_Error = gfunc / deviatoric_K_norm;
         } while (fabs(Relative_Error) >= Precision); 
-        // deviatoric part of Kirchhoff stress tensor: S
-        // S_n+1 = s_n+1 * S_trial_n+1 / s_trial_n+1 ; s_n+1 <- s_Mid
         deviatoric_K = s_Mid * deviatoric_K / deviatoric_K_norm;
-        // update the volumetric left Cauchy - Green strain tensor via
-        // b_e_-_n+1 = S_n+1 / 米 + Tr[b_e_-_trial_n+1]/3 * I
         Matd relaxed_be = deviatoric_K / G0_ + normalized_be_isentropic * Matd::Identity();
-        // renormalize 
-        // b_e_-_n+1 = b_e_-_n+1 * det[b_e_-_n+1]^(-1/3)
         normalized_be = relaxed_be * pow(relaxed_be.determinant(), -OneOverDimensions);
     }
     Matd inverse_F = F.inverse();
     Matd inverse_F_T = inverse_F.transpose();
-    // b_e_n+1 = J_e_n+1^(2/3) * b_e_-_n+1 = det[F_n+1]^(2/3) * b_e_-_n+1
     be = pow(F.determinant(), (2.0 / 3.0)) * normalized_be;
-    // C_p_-1_n+1 = F_-1_n+1 * b_e_n+1 * F_-T_n+1 
     inverse_plastic_strain_[index_i] = inverse_F * be * inverse_F_T;
-    // Kirchhoff stress tensor: 而
-    // 而 = K0_/2 * (J * J - 1) * I + 米 * dev[b_e_-]
-    // First Piola-Kirchhoff stress tensor: P
-    // P = 而 * F_-T 
+
      return (deviatoric_K + VolumetricKirchhoff(F.determinant()) * Matd::Identity()) * inverse_F_T;
 }
 } // namespace SPH

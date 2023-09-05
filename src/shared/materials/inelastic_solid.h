@@ -97,7 +97,7 @@ class ViscousPlasticSolid : public PlasticSolid
     Real viscous_modulus_;
     Real Herschel_Bulkley_power_;
     const Real sqrt_2_over_3_ = sqrt(2.0 / 3.0);
-    StdLargeVec<Matd> inverse_plastic_strain_; /**< inverse of plastic right cauchy green strain tensor C_p_-1 */
+    StdLargeVec<Matd> inverse_plastic_strain_; /**< inverse of plastic right cauchy green strain tensor */
 
   public:
     /** Constructor */
