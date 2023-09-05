@@ -1,6 +1,6 @@
 /**
  * @file 	4.1.1 Ball Collision with Ground.cpp
- * @brief 	two balls with viscoplastic and oobleck(shear thickening) material bouncing with a boundary wall 
+ * @brief 	two balls with viscoplastic and oobleck(shear thickening) material bouncing with a boundary wall. 
  * @author 	Liezhao Wu, Chi Zhang and Xiangyu Hu
  */
 #include "sphinxsys.h"                   /* SPHinXsys Library. */
