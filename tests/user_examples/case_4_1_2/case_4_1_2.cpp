@@ -23,13 +23,13 @@ StdVec<Vecd> observation_location = {ball_center};
 //	Global parameters on material properties
 //----------------------------------------------------------------------
 Real gravity_g = 2.0;
-Real rho0_s = 1.0e3;                                                                                    /* ¦Ñ density. kg/m^3 */
-Real Bulk_modulus = 1.09e5;                                                                             /* ¦Ê bulk modulus. Pa */
-Real Shear_modulus = 1.12e4;                                                                            /* ¦Ì/G shear modulus. Pa */
+Real rho0_s = 1.0e3;                                                                                    /* ï¿½ï¿½ density. kg/m^3 */
+Real Bulk_modulus = 1.09e5;                                                                             /* ï¿½ï¿½ bulk modulus. Pa */
+Real Shear_modulus = 1.12e4;                                                                            /* ï¿½ï¿½/G shear modulus. Pa */
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa */
-Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ¦Í Poisson's ratio. */
-Real yield_stress = 0.1;                                                                                /* ¦Ò_Y yield stress. Pa */
-Real viscosity = 10.0;                                                                                  /* ¦Ç viscosity. */
+Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ï¿½ï¿½ Poisson's ratio. */
+Real yield_stress = 0.1;                                                                                /* ï¿½ï¿½_Y yield stress. Pa */
+Real viscosity = 10.0;                                                                                  /* ï¿½ï¿½ viscosity. */
 Real Herschel_Bulkley_power = 2.8;                                                                      /* oobleck(shear thickening). */
 //Real Herschel_Bulkley_power = 1.0;                                                                    /* viscoplastic. */ 
 //----------------------------------------------------------------------

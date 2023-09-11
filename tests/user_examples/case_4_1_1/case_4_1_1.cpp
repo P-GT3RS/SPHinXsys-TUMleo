@@ -23,13 +23,13 @@ StdVec<Vecd> observation_location_2 = {ball_2_center};
 //	Global parameters on material properties.
 //----------------------------------------------------------------------
 Real gravity_g = 2.0;
-Real rho0_s = 1.0e3;                                                                                    /* ¦Ñ density. kg/m^3 */
-Real Bulk_modulus = 1.09e5;                                                                             /* ¦Ê bulk modulus. Pa */
-Real Shear_modulus = 1.12e4;                                                                            /* ¦Ì/G shear modulus. Pa */
+Real rho0_s = 1.0e3;                                                                                    /* ï¿½ï¿½ density. kg/m^3 */
+Real Bulk_modulus = 1.09e5;                                                                             /* ï¿½ï¿½ bulk modulus. Pa */
+Real Shear_modulus = 1.12e4;                                                                            /* ï¿½ï¿½/G shear modulus. Pa */
 Real Youngs_modulus = (9.0 * Shear_modulus * Bulk_modulus) / (3.0 * Bulk_modulus + Shear_modulus);      /* E Young's modulus. Pa */
-Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ¦Í Poisson's ratio. */
-Real yield_stress = 0.1;                                                                                /* ¦Ò_Y yield stress. Pa */
-Real viscosity = 10.0;                                                                                  /* ¦Ç viscosity. */
+Real poisson = (3.0 * Bulk_modulus - 2.0 * Shear_modulus) / (6.0 * Bulk_modulus + 2.0 * Shear_modulus); /* ï¿½ï¿½ Poisson's ratio. */
+Real yield_stress = 0.1;                                                                                /* ï¿½ï¿½_Y yield stress. Pa */
+Real viscosity = 10.0;                                                                                  /* ï¿½ï¿½ viscosity. */
 Real Herschel_Bulkley_power_1 = 1.0;                                                                    /* viscoplastic material. */
 Real Herschel_Bulkley_power_2 = 2.8;                                                                    /* oobleck(shear thickening) material. */
 //----------------------------------------------------------------------
@@ -176,8 +176,8 @@ int main(int ac, char *av[])
     SimpleDynamics<TimeStepInitialization> ball_2_initialize_timestep(ball_2, gravity_ptr);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_1_corrected_configuration(ball_1_inner);
     InteractionWithUpdate<CorrectedConfigurationInner> ball_2_corrected_configuration(ball_2_inner);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.02);
-    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 0.02);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_1_get_time_step_size(ball_1, 0.2);
+    ReduceDynamics<solid_dynamics::AcousticTimeStepSize> ball_2_get_time_step_size(ball_2, 1.0);
     /** stress relaxation for the balls. */
     Dynamics1Level<solid_dynamics::PlasticIntegration1stHalf> ball_1_stress_relaxation_first_half(ball_1_inner);
     Dynamics1Level<solid_dynamics::Integration2ndHalf> ball_1_stress_relaxation_second_half(ball_1_inner);
@@ -214,7 +214,7 @@ int main(int ac, char *av[])
     //	Setup for time-stepping control.
     //----------------------------------------------------------------------
     int ite = 0;
-    Real T0 = 3.0;
+    Real T0 = 1.5;
     Real end_time = T0;
     Real output_interval = 0.01 * T0;
     Real Dt = 0.1 * output_interval;
@@ -237,7 +237,7 @@ int main(int ac, char *av[])
             {
                 ball_1_initialize_timestep.exec();
                 ball_2_initialize_timestep.exec();
-                if (ite % 100 == 0)
+                if (ite % 1000 == 0)
                 {
                     std::cout << "N=" << ite << " Time: "
                               << GlobalStaticVariables::physical_time_ << "	dt: " << dt << "\n";
